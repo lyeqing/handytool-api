@@ -1,0 +1,128 @@
+@handytool_api_HostAddress = http://localhost:5292
+
+# Ownership placeholder until authentication is added - see Security/CurrentOwner.cs.
+@ownerId = 25
+
+### Create the "Property Inspection" object definition
+POST {{handytool_api_HostAddress}}/api/object-definitions
+Content-Type: application/json
+X-Owner-Id: {{ownerId}}
+
+{
+  "name": "Property Inspection",
+  "description": "Routine inspection of a property.",
+  "fields": [
+    {
+      "key": "propertyAddress",
+      "name": "Property Address",
+      "fieldType": "Text",
+      "isRequired": true,
+      "displayOrder": 1,
+      "settings": { "minimumLength": 2, "maximumLength": 200, "placeholder": "Enter a value" }
+    },
+    {
+      "key": "inspectionDate",
+      "name": "Inspection Date",
+      "fieldType": "Date",
+      "isRequired": true,
+      "displayOrder": 2,
+      "settings": { "minimumDate": "2026-01-01", "maximumDate": "2026-12-31" }
+    },
+    {
+      "key": "conditionScore",
+      "name": "Condition Score",
+      "fieldType": "Range",
+      "isRequired": true,
+      "displayOrder": 3,
+      "settings": { "minimum": 1, "maximum": 10, "step": 1 }
+    },
+    {
+      "key": "damageFound",
+      "name": "Damage Found",
+      "fieldType": "Boolean",
+      "isRequired": true,
+      "displayOrder": 4
+    },
+    {
+      "key": "damageType",
+      "name": "Damage Type",
+      "fieldType": "Dropdown",
+      "isRequired": false,
+      "displayOrder": 5,
+      "options": [
+        { "value": "water", "label": "Water Damage", "displayOrder": 1 },
+        { "value": "structural", "label": "Structural Damage", "displayOrder": 2 },
+        { "value": "cosmetic", "label": "Cosmetic Damage", "displayOrder": 3 }
+      ]
+    }
+  ]
+}
+
+### List the caller's object definitions
+GET {{handytool_api_HostAddress}}/api/object-definitions
+X-Owner-Id: {{ownerId}}
+
+### Read one definition with its fields and options
+GET {{handytool_api_HostAddress}}/api/object-definitions/1
+X-Owner-Id: {{ownerId}}
+
+### Create a valid record
+POST {{handytool_api_HostAddress}}/api/object-definitions/1/records
+Content-Type: application/json
+X-Owner-Id: {{ownerId}}
+
+{
+  "title": "August Property Inspection",
+  "description": "Routine inspection of the property.",
+  "values": {
+    "propertyAddress": "10 King William Street",
+    "inspectionDate": "2026-08-22",
+    "conditionScore": 8,
+    "damageFound": true,
+    "damageType": "water"
+  }
+}
+
+### Create an invalid record - expect 400 with one error per problem
+POST {{handytool_api_HostAddress}}/api/object-definitions/1/records
+Content-Type: application/json
+X-Owner-Id: {{ownerId}}
+
+{
+  "title": "Broken Inspection",
+  "values": {
+    "propertyAddress": "10 King William Street",
+    "conditionScore": "8",
+    "damageFound": true,
+    "damageType": "fire",
+    "inspectorMood": "cheerful"
+  }
+}
+
+### List records of a definition
+GET {{handytool_api_HostAddress}}/api/object-definitions/1/records?skip=0&take=50
+X-Owner-Id: {{ownerId}}
+
+### Read one record
+GET {{handytool_api_HostAddress}}/api/records/1
+X-Owner-Id: {{ownerId}}
+
+### Replace one record
+PUT {{handytool_api_HostAddress}}/api/records/1
+Content-Type: application/json
+X-Owner-Id: {{ownerId}}
+
+{
+  "title": "August Property Inspection (revised)",
+  "description": "Re-inspected after repairs.",
+  "values": {
+    "propertyAddress": "10 King William Street",
+    "inspectionDate": "2026-08-29",
+    "conditionScore": 10,
+    "damageFound": false
+  }
+}
+
+### Delete one record
+DELETE {{handytool_api_HostAddress}}/api/records/1
+X-Owner-Id: {{ownerId}}

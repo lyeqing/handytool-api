@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="handytool-api.csproj" />
+  <Project Path="tests/handytool-api.Tests/handytool-api.Tests.csproj" />
+</Solution>
