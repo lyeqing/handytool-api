@@ -20,9 +20,31 @@ public static partial class ObjectDefinitionEndpoints
     {
         var group = routes.MapGroup("/api/object-definitions").WithTags("Object definitions");
 
-        group.MapGet("/", ListAsync);
-        group.MapGet("/{id:long}", GetAsync);
-        group.MapPost("/", CreateAsync);
+        group.MapGet("/", ListAsync)
+            .WithName("ListObjectDefinitions")
+            .WithSummary("List the caller's object definitions")
+            .WithDescription("Summaries only - fields and options are not included.")
+            .Produces<List<ObjectDefinitionResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        group.MapGet("/{id:long}", GetAsync)
+            .WithName("GetObjectDefinition")
+            .WithSummary("Read one object definition with its fields and options")
+            .WithDescription("Includes inactive fields and options so the schema can be edited.")
+            .Produces<ObjectDefinitionResponse>()
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/", CreateAsync)
+            .WithName("CreateObjectDefinition")
+            .WithSummary("Design a new object type")
+            .WithDescription(
+                "Creates metadata rows only - no table and no C# type is generated. Field keys and " +
+                "option values are the stable identifiers stored in record JSON, so choose them carefully.")
+            .Produces<ObjectDefinitionResponse>(StatusCodes.Status201Created)
+            .Produces<ValidationErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ValidationErrorResponse>(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
     }
 
     private static async Task<IResult> ListAsync(

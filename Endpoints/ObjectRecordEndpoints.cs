@@ -22,15 +22,51 @@ public static class ObjectRecordEndpoints
             .MapDefinitionScopedRecordEndpoints();
 
         var records = routes.MapGroup("/api/records").WithTags("Records");
-        records.MapGet("/{id:long}", GetAsync);
-        records.MapPut("/{id:long}", UpdateAsync);
-        records.MapDelete("/{id:long}", DeleteAsync);
+
+        records.MapGet("/{id:long}", GetAsync)
+            .WithName("GetRecord")
+            .WithSummary("Read one record")
+            .Produces<ObjectRecordResponse>()
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        records.MapPut("/{id:long}", UpdateAsync)
+            .WithName("UpdateRecord")
+            .WithSummary("Replace one record")
+            .WithDescription("Values are validated against the definition's active fields before saving.")
+            .Produces<ObjectRecordResponse>()
+            .Produces<ValidationErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        records.MapDelete("/{id:long}", DeleteAsync)
+            .WithName("DeleteRecord")
+            .WithSummary("Delete one record")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
     }
 
     private static void MapDefinitionScopedRecordEndpoints(this RouteGroupBuilder group)
     {
-        group.MapGet("/", ListAsync);
-        group.MapPost("/", CreateAsync);
+        group.MapGet("/", ListAsync)
+            .WithName("ListRecords")
+            .WithSummary("List the records of one object definition")
+            .WithDescription("Newest first. `take` is clamped to 1-200.")
+            .Produces<PagedResponse<ObjectRecordResponse>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        group.MapPost("/", CreateAsync)
+            .WithName("CreateRecord")
+            .WithSummary("Add a record to an object definition")
+            .WithDescription(
+                "`values` must be a JSON object keyed by field key, holding values only - never labels " +
+                "or other metadata. Types are not coerced: \"8\" is rejected for a numeric field. " +
+                "Dropdown and multi-select entries must be active FieldOption values.")
+            .Produces<ObjectRecordResponse>(StatusCodes.Status201Created)
+            .Produces<ValidationErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
     }
 
     private static async Task<IResult> ListAsync(
