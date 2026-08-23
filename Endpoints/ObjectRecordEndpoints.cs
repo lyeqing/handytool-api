@@ -123,14 +123,20 @@ public static class ObjectRecordEndpoints
         return record is null ? Results.NotFound() : Results.Ok(ObjectRecordResponse.From(record));
     }
 
+    /// <summary>Log category for these endpoints - static classes cannot be used as ILogger&lt;T&gt;.</summary>
+    private const string LogCategory = "handytool_api.Endpoints.ObjectRecords";
+
     private static async Task<IResult> CreateAsync(
         long definitionId,
         SaveObjectRecordRequest request,
         HttpContext httpContext,
         HandyToolDbContext db,
         RecordValueValidator validator,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(LogCategory);
+
         if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
         {
             return ApiResults.MissingOwner();
@@ -159,7 +165,14 @@ public static class ObjectRecordEndpoints
 
         if (titleError is not null || !validation.IsValid)
         {
-            return ApiResults.ValidationFailed("The record is invalid.", Combine(titleError, validation));
+            var failures = Combine(titleError, validation);
+            logger.LogInformation(
+                "Rejected record for definition {DefinitionId}, owner {OwnerId}: {FieldKeys} failed with {ErrorCodes}",
+                definitionId,
+                ownerId,
+                failures.Select(e => e.FieldKey),
+                failures.Select(e => e.ErrorCode).Distinct());
+            return ApiResults.ValidationFailed("The record is invalid.", failures);
         }
 
         var now = DateTime.UtcNow;
@@ -177,6 +190,12 @@ public static class ObjectRecordEndpoints
 
         db.ObjectRecords.Add(record);
         await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Created record {RecordId} on definition {DefinitionId} for owner {OwnerId}",
+            record.Id,
+            definitionId,
+            ownerId);
 
         return Results.Created($"/api/records/{record.Id}", ObjectRecordResponse.From(record));
     }
@@ -226,8 +245,11 @@ public static class ObjectRecordEndpoints
         long id,
         HttpContext httpContext,
         HandyToolDbContext db,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(LogCategory);
+
         if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
         {
             return ApiResults.MissingOwner();
@@ -243,6 +265,13 @@ public static class ObjectRecordEndpoints
 
         db.ObjectRecords.Remove(record);
         await db.SaveChangesAsync(cancellationToken);
+
+        // User data was destroyed - always worth a line.
+        logger.LogInformation(
+            "Deleted record {RecordId} on definition {DefinitionId} for owner {OwnerId}",
+            id,
+            record.ObjectDefinitionId,
+            ownerId);
 
         return Results.NoContent();
     }

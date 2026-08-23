@@ -88,12 +88,18 @@ public static partial class ObjectDefinitionEndpoints
             : Results.Ok(ObjectDefinitionResponse.WithFields(definition));
     }
 
+    /// <summary>Log category for these endpoints - static classes cannot be used as ILogger&lt;T&gt;.</summary>
+    private const string LogCategory = "handytool_api.Endpoints.ObjectDefinitions";
+
     private static async Task<IResult> CreateAsync(
         CreateObjectDefinitionRequest request,
         HttpContext httpContext,
         HandyToolDbContext db,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(LogCategory);
+
         if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
         {
             return ApiResults.MissingOwner();
@@ -102,6 +108,11 @@ public static partial class ObjectDefinitionEndpoints
         var errors = ValidateShape(request);
         if (errors.Count > 0)
         {
+            logger.LogInformation(
+                "Rejected object definition {DefinitionName} for owner {OwnerId}: {ErrorCodes}",
+                request.Name,
+                ownerId,
+                errors.Select(e => e.ErrorCode).Distinct());
             return ApiResults.ValidationFailed("The object definition is invalid.", errors);
         }
 
@@ -160,6 +171,13 @@ public static partial class ObjectDefinitionEndpoints
 
         db.ObjectDefinitions.Add(definition);
         await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Created object definition {DefinitionId} '{DefinitionName}' with {FieldCount} fields for owner {OwnerId}",
+            definition.Id,
+            definition.Name,
+            definition.Fields.Count,
+            ownerId);
 
         return Results.Created(
             $"/api/object-definitions/{definition.Id}",
