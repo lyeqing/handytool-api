@@ -13,7 +13,7 @@ public class ObjectRecordConfiguration : IEntityTypeConfiguration<ObjectRecord>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();
 
-        builder.Property(x => x.OwnerId).IsRequired();
+        builder.Property(x => x.UserId).IsRequired();
 
         builder.Property(x => x.Title)
             .IsRequired()
@@ -33,8 +33,13 @@ public class ObjectRecordConfiguration : IEntityTypeConfiguration<ObjectRecord>
         builder.Property(x => x.ModifiedDate).IsRequired();
 
         builder.HasIndex(x => x.ObjectDefinitionId);
-        builder.HasIndex(x => x.OwnerId);
+        builder.HasIndex(x => x.UserId);
         builder.HasIndex(x => x.CreatedDate);
+
+        builder.HasOne(x => x.User)
+            .WithMany()
+            .HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(x => x.ObjectDefinition)
             .WithMany(x => x.Records)

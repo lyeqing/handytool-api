@@ -1,3 +1,6 @@
+using System.Text.Json;
+using handytool_api.Localization;
+
 namespace handytool_api.Models;
 
 /// <summary>
@@ -8,12 +11,23 @@ public class ObjectDefinition
 {
     public long Id { get; set; }
 
-    /// <summary>Owning user/account/tenant. Never accepted from a client request body.</summary>
-    public long OwnerId { get; set; }
+    /// <summary>Owning account. Resolved from the authenticated session, never from a request body.</summary>
+    public long UserId { get; set; }
 
+    public UserAccount User { get; set; } = null!;
+
+    /// <summary>
+    /// The canonical name, in the default language. Still the value the unique index and the sort
+    /// order use, and the fallback whenever a translation is missing.
+    /// </summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Language to translated name, for every language that is not the default. jsonb.</summary>
+    public JsonDocument NameTranslations { get; set; } = LocalizedText.Empty();
+
     public string Description { get; set; } = string.Empty;
+
+    public JsonDocument DescriptionTranslations { get; set; } = LocalizedText.Empty();
 
     public bool IsActive { get; set; } = true;
 

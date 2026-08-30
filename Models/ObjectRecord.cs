@@ -13,8 +13,10 @@ public class ObjectRecord
 
     public long ObjectDefinitionId { get; set; }
 
-    /// <summary>Owning user/account/tenant. Never accepted from a client request body.</summary>
-    public long OwnerId { get; set; }
+    /// <summary>Owning account. Resolved from the authenticated session, never from a request body.</summary>
+    public long UserId { get; set; }
+
+    public UserAccount User { get; set; } = null!;
 
     public string Title { get; set; } = string.Empty;
 

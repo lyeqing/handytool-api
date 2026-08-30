@@ -47,6 +47,16 @@ public class FieldDefinitionConfiguration : IEntityTypeConfiguration<FieldDefini
             .HasColumnType("jsonb")
             .HasDefaultValueSql("'{}'::jsonb");
 
+        builder.Property(x => x.NameTranslations)
+            .IsRequired()
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb");
+
+        builder.Property(x => x.DescriptionTranslations)
+            .IsRequired()
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb");
+
         builder.Property(x => x.CreatedDate).IsRequired();
         builder.Property(x => x.ModifiedDate).IsRequired();
 
@@ -64,5 +74,13 @@ public class FieldDefinitionConfiguration : IEntityTypeConfiguration<FieldDefini
         builder.ToTable(t => t.HasCheckConstraint(
             "CK_FieldDefinitions_Settings_IsObject",
             "jsonb_typeof(\"Settings\") = 'object'"));
+
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_FieldDefinitions_NameTranslations_IsObject",
+            "jsonb_typeof(\"NameTranslations\") = 'object'"));
+
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_FieldDefinitions_DescriptionTranslations_IsObject",
+            "jsonb_typeof(\"DescriptionTranslations\") = 'object'"));
     }
 }

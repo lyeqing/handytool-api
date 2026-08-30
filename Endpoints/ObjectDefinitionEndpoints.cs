@@ -1,11 +1,14 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using handytool_api.Contracts;
+using handytool_api.Configuration;
 using handytool_api.Data;
+using handytool_api.Localization;
 using handytool_api.Models;
 using handytool_api.Security;
 using handytool_api.Validation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace handytool_api.Endpoints;
 
@@ -16,9 +19,18 @@ namespace handytool_api.Endpoints;
 /// </summary>
 public static partial class ObjectDefinitionEndpoints
 {
+    // Mirrors the HasMaxLength values in the EF configurations. Translations are held to the same
+    // limits as the columns they shadow, so a length cap cannot be sidestepped via jsonb.
+    private const int NameMaxLength = 200;
+    private const int DescriptionMaxLength = 2000;
+    private const int LabelMaxLength = 200;
+
     public static void MapObjectDefinitionEndpoints(this IEndpointRouteBuilder routes)
     {
-        var group = routes.MapGroup("/api/object-definitions").WithTags("Object definitions");
+        var group = routes.MapGroup("/api/object-definitions")
+            .WithTags("Object definitions")
+            .RequireAuthorization()
+            .WithRateLimit(RateLimitPolicies.General);
 
         group.MapGet("/", ListAsync)
             .WithName("ListObjectDefinitions")
@@ -50,42 +62,53 @@ public static partial class ObjectDefinitionEndpoints
     private static async Task<IResult> ListAsync(
         HttpContext httpContext,
         HandyToolDbContext db,
+        IOptions<LocalizationOptions> localization,
         CancellationToken cancellationToken)
     {
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var definitions = await db.ObjectDefinitions
             .AsNoTracking()
-            .Where(d => d.OwnerId == ownerId)
+            .Where(d => d.UserId == userId)
             .OrderBy(d => d.Name)
             .ToListAsync(cancellationToken);
 
-        return Results.Ok(definitions.Select(ObjectDefinitionResponse.Summary).ToList());
+        var language = RequestLanguage.Resolve(httpContext, localization.Value);
+
+        return Results.Ok(definitions.Select(d => ObjectDefinitionResponse.Summary(d, language)).ToList());
     }
 
     private static async Task<IResult> GetAsync(
         long id,
         HttpContext httpContext,
         HandyToolDbContext db,
+        IOptions<LocalizationOptions> localization,
         CancellationToken cancellationToken)
     {
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var definition = await db.ObjectDefinitions
             .AsNoTracking()
             .Include(d => d.Fields)
             .ThenInclude(f => f.Options)
-            .FirstOrDefaultAsync(d => d.Id == id && d.OwnerId == ownerId, cancellationToken);
+            .FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId, cancellationToken);
 
-        return definition is null
-            ? Results.NotFound()
-            : Results.Ok(ObjectDefinitionResponse.WithFields(definition));
+        if (definition is null)
+        {
+            return Results.NotFound();
+        }
+
+        // The editing view: this endpoint already returns inactive fields so a schema can be edited,
+        // so it returns the translation maps for the same reason.
+        var language = RequestLanguage.Resolve(httpContext, localization.Value);
+
+        return Results.Ok(ObjectDefinitionResponse.ForEditing(definition, language));
     }
 
     /// <summary>Log category for these endpoints - static classes cannot be used as ILogger&lt;T&gt;.</summary>
@@ -95,29 +118,31 @@ public static partial class ObjectDefinitionEndpoints
         CreateObjectDefinitionRequest request,
         HttpContext httpContext,
         HandyToolDbContext db,
+        IOptions<LocalizationOptions> localization,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger(LogCategory);
+        var options = localization.Value;
 
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var errors = ValidateShape(request);
         if (errors.Count > 0)
         {
             logger.LogInformation(
-                "Rejected object definition {DefinitionName} for owner {OwnerId}: {ErrorCodes}",
+                "Rejected object definition {DefinitionName} for user {UserId}: {ErrorCodes}",
                 request.Name,
-                ownerId,
+                userId,
                 errors.Select(e => e.ErrorCode).Distinct());
             return ApiResults.ValidationFailed("The object definition is invalid.", errors);
         }
 
         var nameTaken = await db.ObjectDefinitions
-            .AnyAsync(d => d.OwnerId == ownerId && d.Name == request.Name, cancellationToken);
+            .AnyAsync(d => d.UserId == userId && d.Name == request.Name, cancellationToken);
         if (nameTaken)
         {
             return Results.Conflict(new ValidationErrorResponse(
@@ -129,9 +154,11 @@ public static partial class ObjectDefinitionEndpoints
 
         var definition = new ObjectDefinition
         {
-            OwnerId = ownerId,
+            UserId = userId,
             Name = request.Name.Trim(),
+            NameTranslations = LocalizedText.Sanitise(request.NameTranslations, options, NameMaxLength),
             Description = request.Description?.Trim() ?? string.Empty,
+            DescriptionTranslations = LocalizedText.Sanitise(request.DescriptionTranslations, options, DescriptionMaxLength),
             IsActive = true,
             CreatedDate = now,
             ModifiedDate = now
@@ -143,7 +170,9 @@ public static partial class ObjectDefinitionEndpoints
             {
                 Key = fieldRequest.Key.Trim(),
                 Name = fieldRequest.Name.Trim(),
+                NameTranslations = LocalizedText.Sanitise(fieldRequest.NameTranslations, options, NameMaxLength),
                 Description = fieldRequest.Description?.Trim(),
+                DescriptionTranslations = LocalizedText.Sanitise(fieldRequest.DescriptionTranslations, options, DescriptionMaxLength),
                 FieldType = fieldRequest.FieldType,
                 IsRequired = fieldRequest.IsRequired,
                 IsActive = true,
@@ -159,6 +188,7 @@ public static partial class ObjectDefinitionEndpoints
                 {
                     Value = optionRequest.Value.Trim(),
                     Label = optionRequest.Label.Trim(),
+                    LabelTranslations = LocalizedText.Sanitise(optionRequest.LabelTranslations, options, LabelMaxLength),
                     DisplayOrder = optionRequest.DisplayOrder,
                     IsActive = true,
                     CreatedDate = now,
@@ -173,15 +203,15 @@ public static partial class ObjectDefinitionEndpoints
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
-            "Created object definition {DefinitionId} '{DefinitionName}' with {FieldCount} fields for owner {OwnerId}",
+            "Created object definition {DefinitionId} '{DefinitionName}' with {FieldCount} fields for user {UserId}",
             definition.Id,
             definition.Name,
             definition.Fields.Count,
-            ownerId);
+            userId);
 
         return Results.Created(
             $"/api/object-definitions/{definition.Id}",
-            ObjectDefinitionResponse.WithFields(definition));
+            ObjectDefinitionResponse.ForEditing(definition, options.DefaultLanguage));
     }
 
     /// <summary>

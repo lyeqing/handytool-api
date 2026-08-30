@@ -1,12 +1,119 @@
 @handytool_api_HostAddress = http://localhost:5292
 
-# Ownership placeholder until authentication is added - see Security/CurrentOwner.cs.
-@ownerId = 25
+# Paste the "token" from the login response below. It is an opaque credential: it carries no claims,
+# resolves server-side to a stable user id, and can be revoked at any time.
+@token = paste-the-token-from-login-here
+
+### Create an account (also signs this device in)
+POST {{handytool_api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "louis@example.com",
+  "password": "a-long-enough-password",
+  "displayName": "Louis",
+  "deviceName": "REST Client",
+  "clientType": "Web"
+}
+
+### Sign in - returns the opaque session token
+POST {{handytool_api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "louis@example.com",
+  "password": "a-long-enough-password",
+  "deviceName": "REST Client",
+  "clientType": "Web"
+}
+
+### Read the signed-in account
+GET {{handytool_api_HostAddress}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### List this account's signed-in devices - sign in from a phone and both appear here
+GET {{handytool_api_HostAddress}}/api/auth/sessions
+Authorization: Bearer {{token}}
+
+### Sign this device out (revokes the session immediately)
+POST {{handytool_api_HostAddress}}/api/auth/logout
+Authorization: Bearer {{token}}
+
+### Wrong password - repeat 5 times to see the throttle engage
+# Failures 1-4 return 401. The 5th returns 429 with Retry-After: 60.
+# Signing in correctly clears both counters immediately.
+POST {{handytool_api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "louis@example.com",
+  "password": "definitely-not-the-password"
+}
+
+### An unknown address gets the same answer, and takes the same time
+# Neither the message nor the timing reveals whether the account exists.
+POST {{handytool_api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody-here@example.com",
+  "password": "definitely-not-the-password"
+}
+
+### Record an anonymous page view - no Authorization header, and none needed
+# The response carries Set-Cookie: visitor_id=... Every later call from the same client reuses it.
+POST {{handytool_api_HostAddress}}/api/track
+Content-Type: application/json
+
+{
+  "eventType": "page_view",
+  "path": "/properties/123"
+}
+
+### Record a heartbeat - 30 seconds of the tab actually being visible
+POST {{handytool_api_HostAddress}}/api/track
+Content-Type: application/json
+
+{
+  "eventType": "heartbeat",
+  "path": "/properties/123",
+  "activeSeconds": 30
+}
+
+### Record a page view as a signed-in user - same visitor, now with a user id attached
+POST {{handytool_api_HostAddress}}/api/track
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "eventType": "page_view",
+  "path": "/account"
+}
+
+### A static asset is ignored - expect 204 and no row
+POST {{handytool_api_HostAddress}}/api/track
+Content-Type: application/json
+
+{
+  "eventType": "page_view",
+  "path": "/_next/static/chunks/main.js"
+}
+
+### The heartbeat interval the browser should use
+GET {{handytool_api_HostAddress}}/api/track/config
+
+### One account's full history - anonymous events included, still anonymous, in order
+GET {{handytool_api_HostAddress}}/api/analytics/users/1/activity
+Authorization: Bearer {{token}}
+
+### Active seconds per page for one account
+GET {{handytool_api_HostAddress}}/api/analytics/users/1/page-time
+Authorization: Bearer {{token}}
 
 ### Create the "Property Inspection" object definition
 POST {{handytool_api_HostAddress}}/api/object-definitions
 Content-Type: application/json
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 {
   "name": "Property Inspection",
@@ -58,18 +165,49 @@ X-Owner-Id: {{ownerId}}
   ]
 }
 
+### Read one definition in Chinese - labels resolved, Key and Value unchanged
+GET {{handytool_api_HostAddress}}/api/object-definitions/1?lang=zh-Hans
+Authorization: Bearer {{token}}
+
+### Set the account language - remembered across devices, so ?lang is no longer needed
+PATCH {{handytool_api_HostAddress}}/api/auth/me
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "preferredLanguage": "zh-Hans"
+}
+
+### Back to following the browser
+PATCH {{handytool_api_HostAddress}}/api/auth/me
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "preferredLanguage": ""
+}
+
+### A locale-prefixed page view - stored as Path=/tools with Language=zh-Hans
+POST {{handytool_api_HostAddress}}/api/track
+Content-Type: application/json
+
+{
+  "eventType": "page_view",
+  "path": "/zh-Hans/tools"
+}
+
 ### List the caller's object definitions
 GET {{handytool_api_HostAddress}}/api/object-definitions
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 ### Read one definition with its fields and options
 GET {{handytool_api_HostAddress}}/api/object-definitions/1
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 ### Create a valid record
 POST {{handytool_api_HostAddress}}/api/object-definitions/1/records
 Content-Type: application/json
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 {
   "title": "August Property Inspection",
@@ -86,7 +224,7 @@ X-Owner-Id: {{ownerId}}
 ### Create an invalid record - expect 400 with one error per problem
 POST {{handytool_api_HostAddress}}/api/object-definitions/1/records
 Content-Type: application/json
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 {
   "title": "Broken Inspection",
@@ -101,16 +239,16 @@ X-Owner-Id: {{ownerId}}
 
 ### List records of a definition
 GET {{handytool_api_HostAddress}}/api/object-definitions/1/records?skip=0&take=50
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 ### Read one record
 GET {{handytool_api_HostAddress}}/api/records/1
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 ### Replace one record
 PUT {{handytool_api_HostAddress}}/api/records/1
 Content-Type: application/json
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}
 
 {
   "title": "August Property Inspection (revised)",
@@ -125,4 +263,4 @@ X-Owner-Id: {{ownerId}}
 
 ### Delete one record
 DELETE {{handytool_api_HostAddress}}/api/records/1
-X-Owner-Id: {{ownerId}}
+Authorization: Bearer {{token}}

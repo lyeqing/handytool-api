@@ -19,9 +19,14 @@ public static class ObjectRecordEndpoints
     {
         routes.MapGroup("/api/object-definitions/{definitionId:long}/records")
             .WithTags("Records")
+            .RequireAuthorization()
+            .WithRateLimit(RateLimitPolicies.General)
             .MapDefinitionScopedRecordEndpoints();
 
-        var records = routes.MapGroup("/api/records").WithTags("Records");
+        var records = routes.MapGroup("/api/records")
+            .WithTags("Records")
+            .RequireAuthorization()
+            .WithRateLimit(RateLimitPolicies.General);
 
         records.MapGet("/{id:long}", GetAsync)
             .WithName("GetRecord")
@@ -77,9 +82,9 @@ public static class ObjectRecordEndpoints
         int skip = 0,
         int take = 50)
     {
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         skip = Math.Max(0, skip);
@@ -87,7 +92,7 @@ public static class ObjectRecordEndpoints
 
         var query = db.ObjectRecords
             .AsNoTracking()
-            .Where(r => r.ObjectDefinitionId == definitionId && r.OwnerId == ownerId);
+            .Where(r => r.ObjectDefinitionId == definitionId && r.UserId == userId);
 
         var total = await query.LongCountAsync(cancellationToken);
 
@@ -111,14 +116,14 @@ public static class ObjectRecordEndpoints
         HandyToolDbContext db,
         CancellationToken cancellationToken)
     {
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var record = await db.ObjectRecords
             .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Id == id && r.OwnerId == ownerId, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
 
         return record is null ? Results.NotFound() : Results.Ok(ObjectRecordResponse.From(record));
     }
@@ -137,14 +142,14 @@ public static class ObjectRecordEndpoints
     {
         var logger = loggerFactory.CreateLogger(LogCategory);
 
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var definition = await db.ObjectDefinitions
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == definitionId && d.OwnerId == ownerId, cancellationToken);
+            .FirstOrDefaultAsync(d => d.Id == definitionId && d.UserId == userId, cancellationToken);
 
         if (definition is null)
         {
@@ -167,9 +172,9 @@ public static class ObjectRecordEndpoints
         {
             var failures = Combine(titleError, validation);
             logger.LogInformation(
-                "Rejected record for definition {DefinitionId}, owner {OwnerId}: {FieldKeys} failed with {ErrorCodes}",
+                "Rejected record for definition {DefinitionId}, user {UserId}: {FieldKeys} failed with {ErrorCodes}",
                 definitionId,
-                ownerId,
+                userId,
                 failures.Select(e => e.FieldKey),
                 failures.Select(e => e.ErrorCode).Distinct());
             return ApiResults.ValidationFailed("The record is invalid.", failures);
@@ -180,7 +185,7 @@ public static class ObjectRecordEndpoints
         var record = new ObjectRecord
         {
             ObjectDefinitionId = definitionId,
-            OwnerId = ownerId,
+            UserId = userId,
             Title = request.Title.Trim(),
             Description = request.Description?.Trim() ?? string.Empty,
             Values = JsonDocument.Parse(values.GetRawText()),
@@ -192,10 +197,10 @@ public static class ObjectRecordEndpoints
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
-            "Created record {RecordId} on definition {DefinitionId} for owner {OwnerId}",
+            "Created record {RecordId} on definition {DefinitionId} for user {UserId}",
             record.Id,
             definitionId,
-            ownerId);
+            userId);
 
         return Results.Created($"/api/records/{record.Id}", ObjectRecordResponse.From(record));
     }
@@ -208,13 +213,13 @@ public static class ObjectRecordEndpoints
         RecordValueValidator validator,
         CancellationToken cancellationToken)
     {
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var record = await db.ObjectRecords
-            .FirstOrDefaultAsync(r => r.Id == id && r.OwnerId == ownerId, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
 
         if (record is null)
         {
@@ -250,13 +255,13 @@ public static class ObjectRecordEndpoints
     {
         var logger = loggerFactory.CreateLogger(LogCategory);
 
-        if (!CurrentOwner.TryGetOwnerId(httpContext, out var ownerId))
+        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
         {
-            return ApiResults.MissingOwner();
+            return Results.Unauthorized();
         }
 
         var record = await db.ObjectRecords
-            .FirstOrDefaultAsync(r => r.Id == id && r.OwnerId == ownerId, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
 
         if (record is null)
         {
@@ -268,10 +273,10 @@ public static class ObjectRecordEndpoints
 
         // User data was destroyed - always worth a line.
         logger.LogInformation(
-            "Deleted record {RecordId} on definition {DefinitionId} for owner {OwnerId}",
+            "Deleted record {RecordId} on definition {DefinitionId} for user {UserId}",
             id,
             record.ObjectDefinitionId,
-            ownerId);
+            userId);
 
         return Results.NoContent();
     }

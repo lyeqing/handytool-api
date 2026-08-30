@@ -1,3 +1,4 @@
+using handytool_api.Security;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 
@@ -28,10 +29,10 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     {
         _logger.LogError(
             exception,
-            "Unhandled exception on {Method} {Path} for owner {OwnerId}",
+            "Unhandled exception on {Method} {Path} for user {UserId}",
             httpContext.Request.Method,
             httpContext.Request.Path.Value,
-            httpContext.Request.Headers["X-Owner-Id"].ToString() is { Length: > 0 } owner ? owner : "(none)");
+            CurrentUser.TryGetUserId(httpContext, out var userId) ? userId.ToString() : "(anonymous)");
 
         if (_environment.IsDevelopment())
         {

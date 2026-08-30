@@ -29,6 +29,11 @@ public class FieldOptionConfiguration : IEntityTypeConfiguration<FieldOption>
             .IsRequired()
             .HasDefaultValue(true);
 
+        builder.Property(x => x.LabelTranslations)
+            .IsRequired()
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb");
+
         builder.Property(x => x.CreatedDate).IsRequired();
         builder.Property(x => x.ModifiedDate).IsRequired();
 
@@ -41,5 +46,9 @@ public class FieldOptionConfiguration : IEntityTypeConfiguration<FieldOption>
             .WithMany(x => x.Options)
             .HasForeignKey(x => x.FieldDefinitionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.ToTable(t => t.HasCheckConstraint(
+            "CK_FieldOptions_LabelTranslations_IsObject",
+            "jsonb_typeof(\"LabelTranslations\") = 'object'"));
     }
 }

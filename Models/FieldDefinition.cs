@@ -1,4 +1,5 @@
 using System.Text.Json;
+using handytool_api.Localization;
 
 namespace handytool_api.Models;
 
@@ -21,7 +22,12 @@ public class FieldDefinition
     /// <summary>User-facing label, for example "Property Address". Safe to change at any time.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Language to translated label. The <see cref="Key"/> is never translated.</summary>
+    public JsonDocument NameTranslations { get; set; } = LocalizedText.Empty();
+
     public string? Description { get; set; }
+
+    public JsonDocument DescriptionTranslations { get; set; } = LocalizedText.Empty();
 
     public FieldType FieldType { get; set; }
 

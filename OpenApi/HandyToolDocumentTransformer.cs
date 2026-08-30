@@ -1,4 +1,3 @@
-using handytool_api.Security;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
@@ -6,11 +5,11 @@ namespace handytool_api.OpenApi;
 
 /// <summary>
 /// Fills in the document-level details the built-in generator cannot infer: the API description and
-/// the ownership header, exposed as an API key scheme so Swagger UI offers an "Authorize" box for it.
+/// the bearer scheme, so Swagger UI offers an "Authorize" box to paste a session token into.
 /// </summary>
 public sealed class HandyToolDocumentTransformer : IOpenApiDocumentTransformer
 {
-    private const string OwnerSchemeId = "OwnerId";
+    private const string SessionSchemeId = "SessionToken";
 
     public Task TransformAsync(
         OpenApiDocument document,
@@ -25,26 +24,32 @@ public sealed class HandyToolDocumentTransformer : IOpenApiDocumentTransformer
                 "Metadata-driven data platform. Users design their own object types " +
                 "(ObjectDefinition + FieldDefinition + FieldOption); every record of every type is " +
                 "stored in the single ObjectRecords table with its dynamic values in one jsonb column.\n\n" +
-                $"Ownership is a placeholder until authentication exists: send a positive integer " +
-                $"`{CurrentOwner.HeaderName}` header (use Authorize above, e.g. 25). It is never read " +
-                "from a request body."
+                "Authentication is an opaque, database-backed session token - no JWT. Sign in at " +
+                "`/api/auth/login`, then send `Authorization: Bearer <token>`. The token is a " +
+                "credential, not an identity: it resolves server-side to a stable user id, is stored " +
+                "only as a hash, and can be revoked at any time.\n\n" +
+                "Analytics keeps three identities apart. `VisitorId` is the browser, held in the " +
+                "HttpOnly `visitor_id` cookie; `SessionId` is one period of browsing; `UserId` is the " +
+                "account. Signing in links the visitor to the user - it never replaces the visitor, " +
+                "and never rewrites earlier anonymous events."
         };
 
         document.Components ??= new OpenApiComponents();
         document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
-        document.Components.SecuritySchemes[OwnerSchemeId] = new OpenApiSecurityScheme
+        document.Components.SecuritySchemes[SessionSchemeId] = new OpenApiSecurityScheme
         {
-            Type = SecuritySchemeType.ApiKey,
-            In = ParameterLocation.Header,
-            Name = CurrentOwner.HeaderName,
-            Description = "Owning user/account/tenant id, for example 25."
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            Description =
+                "The opaque token returned by /api/auth/login. Paste the token alone - Swagger UI " +
+                "adds the \"Bearer \" prefix."
         };
 
         document.Security =
         [
             new OpenApiSecurityRequirement
             {
-                [new OpenApiSecuritySchemeReference(OwnerSchemeId, document)] = []
+                [new OpenApiSecuritySchemeReference(SessionSchemeId, document)] = []
             }
         ];
 

@@ -23,6 +23,116 @@ namespace handytool_api.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("handytool_api.Models.AnalyticsEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("ActiveSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClientType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Referrer")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long?>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventType");
+
+                    b.HasIndex("Language");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("ClientId", "Timestamp");
+
+                    b.HasIndex("SessionId", "Timestamp");
+
+                    b.HasIndex("UserId", "Timestamp");
+
+                    b.ToTable("AnalyticsEvents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AnalyticsEvents_ActiveSeconds_NonNegative", "\"ActiveSeconds\" IS NULL OR \"ActiveSeconds\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("handytool_api.Models.AuthThrottle", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("FirstFailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("LastFailedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastFailedAt");
+
+                    b.HasIndex("Scope", "KeyHash")
+                        .IsUnique();
+
+                    b.ToTable("AuthThrottles", (string)null);
+                });
+
             modelBuilder.Entity("handytool_api.Models.FieldDefinition", b =>
                 {
                     b.Property<long>("Id")
@@ -37,6 +147,12 @@ namespace handytool_api.Data.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<JsonDocument>("DescriptionTranslations")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'{}'::jsonb");
 
                     b.Property<int>("DisplayOrder")
                         .ValueGeneratedOnAdd()
@@ -71,6 +187,12 @@ namespace handytool_api.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<JsonDocument>("NameTranslations")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
                     b.Property<long>("ObjectDefinitionId")
                         .HasColumnType("bigint");
 
@@ -89,6 +211,10 @@ namespace handytool_api.Data.Migrations
 
                     b.ToTable("FieldDefinitions", null, t =>
                         {
+                            t.HasCheckConstraint("CK_FieldDefinitions_DescriptionTranslations_IsObject", "jsonb_typeof(\"DescriptionTranslations\") = 'object'");
+
+                            t.HasCheckConstraint("CK_FieldDefinitions_NameTranslations_IsObject", "jsonb_typeof(\"NameTranslations\") = 'object'");
+
                             t.HasCheckConstraint("CK_FieldDefinitions_Settings_IsObject", "jsonb_typeof(\"Settings\") = 'object'");
                         });
                 });
@@ -122,6 +248,12 @@ namespace handytool_api.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<JsonDocument>("LabelTranslations")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
                     b.Property<DateTime>("ModifiedDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -137,7 +269,10 @@ namespace handytool_api.Data.Migrations
                     b.HasIndex("FieldDefinitionId", "Value")
                         .IsUnique();
 
-                    b.ToTable("FieldOptions", (string)null);
+                    b.ToTable("FieldOptions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FieldOptions_LabelTranslations_IsObject", "jsonb_typeof(\"LabelTranslations\") = 'object'");
+                        });
                 });
 
             modelBuilder.Entity("handytool_api.Models.ObjectDefinition", b =>
@@ -158,6 +293,12 @@ namespace handytool_api.Data.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasDefaultValue("");
 
+                    b.Property<JsonDocument>("DescriptionTranslations")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -171,17 +312,28 @@ namespace handytool_api.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<long>("OwnerId")
+                    b.Property<JsonDocument>("NameTranslations")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<long>("UserId")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OwnerId");
+                    b.HasIndex("UserId");
 
-                    b.HasIndex("OwnerId", "Name")
+                    b.HasIndex("UserId", "Name")
                         .IsUnique();
 
-                    b.ToTable("ObjectDefinitions", (string)null);
+                    b.ToTable("ObjectDefinitions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ObjectDefinitions_DescriptionTranslations_IsObject", "jsonb_typeof(\"DescriptionTranslations\") = 'object'");
+
+                            t.HasCheckConstraint("CK_ObjectDefinitions_NameTranslations_IsObject", "jsonb_typeof(\"NameTranslations\") = 'object'");
+                        });
                 });
 
             modelBuilder.Entity("handytool_api.Models.ObjectRecord", b =>
@@ -208,13 +360,13 @@ namespace handytool_api.Data.Migrations
                     b.Property<long>("ObjectDefinitionId")
                         .HasColumnType("bigint");
 
-                    b.Property<long>("OwnerId")
-                        .HasColumnType("bigint");
-
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint");
 
                     b.Property<JsonDocument>("Values")
                         .IsRequired()
@@ -228,12 +380,217 @@ namespace handytool_api.Data.Migrations
 
                     b.HasIndex("ObjectDefinitionId");
 
-                    b.HasIndex("OwnerId");
+                    b.HasIndex("UserId");
 
                     b.ToTable("ObjectRecords", null, t =>
                         {
                             t.HasCheckConstraint("CK_ObjectRecords_Values_IsObject", "jsonb_typeof(\"Values\") = 'object'");
                         });
+                });
+
+            modelBuilder.Entity("handytool_api.Models.TrackingClient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClientType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FirstSeenDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastSeenDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientType");
+
+                    b.HasIndex("LastSeenDate");
+
+                    b.ToTable("TrackingClients", (string)null);
+                });
+
+            modelBuilder.Entity("handytool_api.Models.TrackingClientUser", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FirstIdentifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastIdentifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ClientId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("TrackingClientUsers", (string)null);
+                });
+
+            modelBuilder.Entity("handytool_api.Models.TrackingSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "LastActivityAt");
+
+                    b.ToTable("TrackingSessions", (string)null);
+                });
+
+            modelBuilder.Entity("handytool_api.Models.UserAccount", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasDefaultValue("");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("ModifiedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("PasswordSalt")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("PreferredLanguage")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.ToTable("UserAccounts", (string)null);
+                });
+
+            modelBuilder.Entity("handytool_api.Models.UserSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClientType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeviceName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("ExpiresDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastUsedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevokedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresDate");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "RevokedDate");
+
+                    b.ToTable("UserSessions", (string)null);
+                });
+
+            modelBuilder.Entity("handytool_api.Models.AnalyticsEvent", b =>
+                {
+                    b.HasOne("handytool_api.Models.TrackingClient", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("handytool_api.Models.TrackingSession", "Session")
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+
+                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("handytool_api.Models.FieldDefinition", b =>
@@ -258,6 +615,17 @@ namespace handytool_api.Data.Migrations
                     b.Navigation("FieldDefinition");
                 });
 
+            modelBuilder.Entity("handytool_api.Models.ObjectDefinition", b =>
+                {
+                    b.HasOne("handytool_api.Models.UserAccount", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("handytool_api.Models.ObjectRecord", b =>
                 {
                     b.HasOne("handytool_api.Models.ObjectDefinition", "ObjectDefinition")
@@ -266,7 +634,56 @@ namespace handytool_api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("handytool_api.Models.UserAccount", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("ObjectDefinition");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("handytool_api.Models.TrackingClientUser", b =>
+                {
+                    b.HasOne("handytool_api.Models.TrackingClient", "Client")
+                        .WithMany("Users")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("handytool_api.Models.UserAccount", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("handytool_api.Models.TrackingSession", b =>
+                {
+                    b.HasOne("handytool_api.Models.TrackingClient", "Client")
+                        .WithMany("Sessions")
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("handytool_api.Models.UserSession", b =>
+                {
+                    b.HasOne("handytool_api.Models.UserAccount", "User")
+                        .WithMany("Sessions")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("handytool_api.Models.FieldDefinition", b =>
@@ -279,6 +696,18 @@ namespace handytool_api.Data.Migrations
                     b.Navigation("Fields");
 
                     b.Navigation("Records");
+                });
+
+            modelBuilder.Entity("handytool_api.Models.TrackingClient", b =>
+                {
+                    b.Navigation("Sessions");
+
+                    b.Navigation("Users");
+                });
+
+            modelBuilder.Entity("handytool_api.Models.UserAccount", b =>
+                {
+                    b.Navigation("Sessions");
                 });
 #pragma warning restore 612, 618
         }
