@@ -1,19 +1,22 @@
 namespace handytool_api.Models;
 
-/// <summary>
-/// The set of dynamic field types supported by the platform.
-/// Persisted as text so the database stays readable; add new members at the end.
-/// </summary>
+/// <summary>Supported field components. Persisted integer values must never be renumbered or reused.</summary>
 public enum FieldType
 {
-    Text,
-    LongText,
-    Integer,
-    Decimal,
-    Boolean,
-    Date,
-    DateTime,
-    Range,
-    Dropdown,
-    MultiSelect
+    ShortText = 1,
+    LongText = 2,
+    Integer = 3,
+    Decimal = 4,
+    Range = 5,
+    Date = 6,
+    Time = 7,
+    DateTime = 8,
+    Dropdown = 9,
+    RadioGroup = 10,
+    Checklist = 11,
+    MultiSelect = 12,
+    Boolean = 13,
+    Markdown = 14,
+    Object = 15,
+    Collection = 16,
 }

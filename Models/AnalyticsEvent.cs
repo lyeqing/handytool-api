@@ -9,6 +9,7 @@ namespace handytool_api.Models;
 /// </summary>
 public class AnalyticsEvent
 {
+    // Database columns
     public long Id { get; set; }
 
     /// <summary>The VisitorId for web clients; the installation id for a future native client.</summary>
@@ -50,6 +51,7 @@ public class AnalyticsEvent
 
     public string? UserAgent { get; set; }
 
+    // Relationships — not additional database columns
     public TrackingClient Client { get; set; } = null!;
 
     public TrackingSession Session { get; set; } = null!;

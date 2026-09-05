@@ -1,6 +1,3 @@
-using System.Text.Json;
-using handytool_api.Localization;
-
 namespace handytool_api.Models;
 
 /// <summary>
@@ -9,12 +6,15 @@ namespace handytool_api.Models;
 /// </summary>
 public class ObjectDefinition
 {
+    // Database columns
     public long Id { get; set; }
 
-    /// <summary>Owning account. Resolved from the authenticated session, never from a request body.</summary>
-    public long UserId { get; set; }
+    public long MasterCategoryId { get; set; } = MasterCategory.UncategorizedId;
 
-    public UserAccount User { get; set; } = null!;
+    public long? SubcategoryId { get; set; }
+
+    /// <summary>Creator for audit and private visibility; this does not make shared definitions user-owned.</summary>
+    public long CreatedByUserId { get; set; }
 
     /// <summary>
     /// The canonical name, in the default language. Still the value the unique index and the sort
@@ -22,18 +22,32 @@ public class ObjectDefinition
     /// </summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Language to translated name, for every language that is not the default. jsonb.</summary>
-    public JsonDocument NameTranslations { get; set; } = LocalizedText.Empty();
-
     public string Description { get; set; } = string.Empty;
 
-    public JsonDocument DescriptionTranslations { get; set; } = LocalizedText.Empty();
+    /// <summary>Minimum subscription access, 0 (anonymous) through 3 (Full); visibility also applies.</summary>
+    public int RequiredAccessLevel { get; set; }
+
+    public DefinitionVisibility Visibility { get; set; } = DefinitionVisibility.Private;
+
+    /// <summary>The explicitly selected company receiving access, only for Company visibility.</summary>
+    public long? CompanyId { get; set; }
 
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedDate { get; set; }
 
     public DateTime ModifiedDate { get; set; }
+
+    // Relationships — not additional database columns
+    public MasterCategory MasterCategory { get; set; } = null!;
+
+    public Subcategory? Subcategory { get; set; }
+
+    public UserAccount CreatedByUser { get; set; } = null!;
+
+    public ICollection<ObjectDefinitionTranslation> Translations { get; set; } = new List<ObjectDefinitionTranslation>();
+
+    public CompanyAccount? Company { get; set; }
 
     public ICollection<FieldDefinition> Fields { get; set; } = new List<FieldDefinition>();
 

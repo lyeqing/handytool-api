@@ -7,6 +7,7 @@ namespace handytool_api.Models;
 /// </summary>
 public class TrackingSession
 {
+    // Database columns
     /// <summary>The SessionId carried on every event of this browsing period.</summary>
     public Guid Id { get; set; }
 
@@ -20,5 +21,6 @@ public class TrackingSession
     /// <summary>Set when a session is explicitly closed. Idle sessions simply stop being extended.</summary>
     public DateTime? EndedAt { get; set; }
 
+    // Relationships — not additional database columns
     public TrackingClient Client { get; set; } = null!;
 }

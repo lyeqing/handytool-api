@@ -9,6 +9,7 @@ namespace handytool_api.Models;
 /// </summary>
 public class TrackingClient
 {
+    // Database columns
     /// <summary>Opaque random GUID. For the website this is the VisitorId. Never derived from a user id or a token.</summary>
     public Guid Id { get; set; }
 
@@ -20,6 +21,7 @@ public class TrackingClient
 
     public DateTime CreatedDate { get; set; }
 
+    // Relationships — not additional database columns
     public ICollection<TrackingSession> Sessions { get; set; } = new List<TrackingSession>();
 
     public ICollection<TrackingClientUser> Users { get; set; } = new List<TrackingClientUser>();

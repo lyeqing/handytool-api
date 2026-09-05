@@ -9,6 +9,34 @@ public class HandyToolDbContext : DbContext
     {
     }
 
+    public DbSet<MasterCategoryTranslation> MasterCategoryTranslations => Set<MasterCategoryTranslation>();
+    public DbSet<SubcategoryTranslation> SubcategoryTranslations => Set<SubcategoryTranslation>();
+    public DbSet<ObjectDefinitionTranslation> ObjectDefinitionTranslations => Set<ObjectDefinitionTranslation>();
+    public DbSet<FieldDefinitionTranslation> FieldDefinitionTranslations => Set<FieldDefinitionTranslation>();
+    public DbSet<FieldOptionTranslation> FieldOptionTranslations => Set<FieldOptionTranslation>();
+
+    public DbSet<ShortTextField> ShortTextFields => Set<ShortTextField>();
+    public DbSet<LongTextField> LongTextFields => Set<LongTextField>();
+    public DbSet<IntegerField> IntegerFields => Set<IntegerField>();
+    public DbSet<DecimalField> DecimalFields => Set<DecimalField>();
+    public DbSet<RangeField> RangeFields => Set<RangeField>();
+    public DbSet<DateField> DateFields => Set<DateField>();
+    public DbSet<TimeField> TimeFields => Set<TimeField>();
+    public DbSet<DateTimeField> DateTimeFields => Set<DateTimeField>();
+    public DbSet<DropdownField> DropdownFields => Set<DropdownField>();
+    public DbSet<RadioGroupField> RadioGroupFields => Set<RadioGroupField>();
+    public DbSet<ChecklistField> ChecklistFields => Set<ChecklistField>();
+    public DbSet<MultiSelectField> MultiSelectFields => Set<MultiSelectField>();
+    public DbSet<BooleanField> BooleanFields => Set<BooleanField>();
+    public DbSet<MarkdownField> MarkdownFields => Set<MarkdownField>();
+    public DbSet<ObjectField> ObjectFields => Set<ObjectField>();
+    public DbSet<CollectionField> CollectionFields => Set<CollectionField>();
+
+    public DbSet<MasterCategory> MasterCategories => Set<MasterCategory>();
+    public DbSet<Subcategory> Subcategories => Set<Subcategory>();
+    public DbSet<CompanyAccount> CompanyAccounts => Set<CompanyAccount>();
+    public DbSet<AccountType> AccountTypes => Set<AccountType>();
+
     public DbSet<ObjectDefinition> ObjectDefinitions => Set<ObjectDefinition>();
 
     public DbSet<FieldDefinition> FieldDefinitions => Set<FieldDefinition>();

@@ -8,12 +8,31 @@ public class ObjectDefinitionConfiguration : IEntityTypeConfiguration<ObjectDefi
 {
     public void Configure(EntityTypeBuilder<ObjectDefinition> builder)
     {
-        builder.ToTable("ObjectDefinitions");
+        builder.ToTable("ObjectDefinitions", t =>
+        {
+            t.HasCheckConstraint("CK_ObjectDefinitions_RequiredAccessLevel", "\"RequiredAccessLevel\" BETWEEN 0 AND 3");
+            t.HasCheckConstraint("CK_ObjectDefinitions_Visibility", "\"Visibility\" IN (0, 1, 2)");
+            t.HasCheckConstraint("CK_ObjectDefinitions_CompanyVisibility",
+                """("Visibility" = 1 AND "CompanyId" IS NOT NULL) OR ("Visibility" IN (0, 2) AND "CompanyId" IS NULL)""");
+        });
+        builder.Property(x => x.Visibility).HasConversion<int>().HasDefaultValue(DefinitionVisibility.Private);
+        builder.Property(x => x.RequiredAccessLevel).HasDefaultValue(0);
+        builder.HasOne(x => x.Company).WithMany()
+            .HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property(x => x.MasterCategoryId).HasDefaultValue(MasterCategory.UncategorizedId);
+        builder.HasOne(x => x.MasterCategory).WithMany()
+            .HasForeignKey(x => x.MasterCategoryId).OnDelete(DeleteBehavior.Restrict);
+        // A composite FK ensures the selected subcategory belongs to the same master category.
+        builder.HasOne(x => x.Subcategory).WithMany()
+            .HasForeignKey(x => new { x.SubcategoryId, x.MasterCategoryId })
+            .HasPrincipalKey(x => new { x.Id, x.MasterCategoryId })
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();
 
-        builder.Property(x => x.UserId).IsRequired();
+        builder.Property(x => x.CreatedByUserId).IsRequired();
 
         builder.Property(x => x.Name)
             .IsRequired()
@@ -28,35 +47,18 @@ public class ObjectDefinitionConfiguration : IEntityTypeConfiguration<ObjectDefi
             .IsRequired()
             .HasDefaultValue(true);
 
-        builder.Property(x => x.NameTranslations)
-            .IsRequired()
-            .HasColumnType("jsonb")
-            .HasDefaultValueSql("'{}'::jsonb");
-
-        builder.Property(x => x.DescriptionTranslations)
-            .IsRequired()
-            .HasColumnType("jsonb")
-            .HasDefaultValueSql("'{}'::jsonb");
-
         builder.Property(x => x.CreatedDate).IsRequired();
         builder.Property(x => x.ModifiedDate).IsRequired();
 
-        builder.HasIndex(x => x.UserId);
+        builder.HasIndex(x => x.CreatedByUserId);
 
-        // One account cannot have two definitions with the same name.
-        builder.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+        // Preserve uniqueness of definition names per creator.
+        builder.HasIndex(x => new { x.CreatedByUserId, x.Name }).IsUnique();
 
-        builder.HasOne(x => x.User)
+        builder.HasOne(x => x.CreatedByUser)
             .WithMany()
-            .HasForeignKey(x => x.UserId)
+            .HasForeignKey(x => x.CreatedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.ToTable(t => t.HasCheckConstraint(
-            "CK_ObjectDefinitions_NameTranslations_IsObject",
-            "jsonb_typeof(\"NameTranslations\") = 'object'"));
-
-        builder.ToTable(t => t.HasCheckConstraint(
-            "CK_ObjectDefinitions_DescriptionTranslations_IsObject",
-            "jsonb_typeof(\"DescriptionTranslations\") = 'object'"));
     }
 }

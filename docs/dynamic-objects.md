@@ -13,7 +13,7 @@ Users design their own object types ("Property Inspection", "Customer Survey", .
 | **Every actual user record** | `ObjectRecord` | `ObjectRecords` |
 
 `ObjectRecord` is the only entity holding user-entered business data. Its relational columns
-(`Title`, `Description`, `OwnerId`, timestamps) are normal columns; the dynamic part is a single
+(`Title`, `Description`, `UserId`, timestamps) are normal columns; the dynamic part is a single
 `jsonb` column, `Values`, keyed by `FieldDefinition.Key`.
 
 Record JSON stores **values only** - never labels, types, validation settings or display order. Those
@@ -44,10 +44,10 @@ Prefer flipping `IsActive` to `false` over deleting anything once data exists.
 
 ### Indexes
 
-`ObjectDefinitions(OwnerId)`, `ObjectDefinitions(OwnerId, Name)` unique, `FieldDefinitions(ObjectDefinitionId)`,
+`ObjectDefinitions(UserId)`, `ObjectDefinitions(UserId, Name)` unique, `FieldDefinitions(ObjectDefinitionId)`,
 `FieldDefinitions(ObjectDefinitionId, Key)` unique, `FieldOptions(FieldDefinitionId)`,
 `FieldOptions(FieldDefinitionId, Value)` unique, `ObjectRecords(ObjectDefinitionId)`,
-`ObjectRecords(OwnerId)`, `ObjectRecords(CreatedDate)`.
+`ObjectRecords(UserId)`, `ObjectRecords(CreatedDate)`.
 
 No GIN or JSON expression indexes yet: nothing currently queries *inside* `Values`. Add them when a real
 query pattern appears (filtering or reporting on a specific key), not before.
@@ -123,21 +123,24 @@ In Development the app serves:
 - Swagger UI at `/swagger` (`Swashbuckle.AspNetCore.SwaggerUI` renders the document above - Swashbuckle
   does not generate it).
 
-`X-Owner-Id` is declared as an API key security scheme, so hit **Authorize** in Swagger UI and enter an
-owner id (for example `25`) before trying anything - every endpoint is owner-scoped and returns 401
-without it. The create-definition and create-record bodies come pre-filled with the Property Inspection
-example, so "Try it out" works with no typing.
+A bearer scheme is declared, so sign in at `/api/auth/login`, hit **Authorize** in Swagger UI and paste
+the token before trying anything - every endpoint is account-scoped and returns 401 without it. The
+create-definition and create-record bodies come pre-filled with the Property Inspection example, so
+"Try it out" works with no typing.
 
 Both are registered only when `app.Environment.IsDevelopment()`; nothing is exposed in production.
 
 ## Ownership
 
-`OwnerId` is never read from a request body. Today it is resolved from an `X-Owner-Id` header in
-`Security/CurrentOwner`; when authentication lands, that one file changes to read the authenticated
-principal, and every endpoint keeps working. Every query is filtered by owner.
+`UserId` is never read from a request body. It is resolved from the authenticated principal in
+`Security/CurrentUser`, which reads the claim the session-token authentication handler put there.
+Every query is filtered by it. See [tracking-and-auth.md](tracking-and-auth.md).
 
 ## Deliberately not built yet
 
-Frontend, charts, dashboards, AI chat, file/image/signature fields, record-to-record references,
-calculated fields, workflow automation, complex permissions, definition version history, analytics
-projections, and soft-delete infrastructure.
+Charts, dashboards, AI chat, file/image/signature fields, record-to-record references, calculated
+fields, workflow automation, complex permissions, definition version history, and soft-delete
+infrastructure.
+
+Labels here are translatable - `Name`, `Description` and `Label` each have a jsonb translations map
+beside them, while `Key` and `Value` never change. See [localization.md](localization.md).

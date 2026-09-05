@@ -11,6 +11,7 @@ namespace handytool_api.Models;
 /// </summary>
 public class UserSession
 {
+    // Database columns
     public Guid Id { get; set; }
 
     /// <summary>The stable account identity this credential resolves to.</summary>
@@ -38,8 +39,10 @@ public class UserSession
     /// <summary>Set by logout or by an administrator. A revoked session can never be revived.</summary>
     public DateTime? RevokedDate { get; set; }
 
-    public UserAccount User { get; set; } = null!;
-
+    // Methods
     /// <summary>A session is usable only while it is neither revoked nor past its absolute expiry.</summary>
     public bool IsActiveAt(DateTime utcNow) => RevokedDate is null && ExpiresDate > utcNow;
+
+    // Relationships — not additional database columns
+    public UserAccount User { get; set; } = null!;
 }

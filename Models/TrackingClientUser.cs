@@ -13,6 +13,7 @@ namespace handytool_api.Models;
 /// </summary>
 public class TrackingClientUser
 {
+    // Database columns
     public long Id { get; set; }
 
     public Guid ClientId { get; set; }
@@ -25,6 +26,7 @@ public class TrackingClientUser
     /// <summary>Most recent authenticated sighting. Cheap way to rank a user's devices by recency.</summary>
     public DateTime LastIdentifiedAt { get; set; }
 
+    // Relationships — not additional database columns
     public TrackingClient Client { get; set; } = null!;
 
     public UserAccount User { get; set; } = null!;

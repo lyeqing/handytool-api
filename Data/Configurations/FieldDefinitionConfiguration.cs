@@ -8,7 +8,7 @@ public class FieldDefinitionConfiguration : IEntityTypeConfiguration<FieldDefini
 {
     public void Configure(EntityTypeBuilder<FieldDefinition> builder)
     {
-        builder.ToTable("FieldDefinitions");
+        builder.ToTable("FieldDefinitions", t => t.HasCheckConstraint("CK_FieldDefinitions_FieldType", "\"FieldType\" BETWEEN 1 AND 16"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();
@@ -24,11 +24,7 @@ public class FieldDefinitionConfiguration : IEntityTypeConfiguration<FieldDefini
         builder.Property(x => x.Description)
             .HasMaxLength(2000);
 
-        // Stored as text: the database stays readable and enum members are stable identifiers.
-        builder.Property(x => x.FieldType)
-            .IsRequired()
-            .HasMaxLength(32)
-            .HasConversion<string>();
+        builder.Property(x => x.FieldType).HasConversion<int>().IsRequired();
 
         builder.Property(x => x.IsRequired)
             .IsRequired()
@@ -41,21 +37,6 @@ public class FieldDefinitionConfiguration : IEntityTypeConfiguration<FieldDefini
         builder.Property(x => x.DisplayOrder)
             .IsRequired()
             .HasDefaultValue(0);
-
-        builder.Property(x => x.Settings)
-            .IsRequired()
-            .HasColumnType("jsonb")
-            .HasDefaultValueSql("'{}'::jsonb");
-
-        builder.Property(x => x.NameTranslations)
-            .IsRequired()
-            .HasColumnType("jsonb")
-            .HasDefaultValueSql("'{}'::jsonb");
-
-        builder.Property(x => x.DescriptionTranslations)
-            .IsRequired()
-            .HasColumnType("jsonb")
-            .HasDefaultValueSql("'{}'::jsonb");
 
         builder.Property(x => x.CreatedDate).IsRequired();
         builder.Property(x => x.ModifiedDate).IsRequired();
@@ -71,16 +52,5 @@ public class FieldDefinitionConfiguration : IEntityTypeConfiguration<FieldDefini
             // Safe: deleting a definition is only permitted while it has no records (see ObjectRecord).
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.ToTable(t => t.HasCheckConstraint(
-            "CK_FieldDefinitions_Settings_IsObject",
-            "jsonb_typeof(\"Settings\") = 'object'"));
-
-        builder.ToTable(t => t.HasCheckConstraint(
-            "CK_FieldDefinitions_NameTranslations_IsObject",
-            "jsonb_typeof(\"NameTranslations\") = 'object'"));
-
-        builder.ToTable(t => t.HasCheckConstraint(
-            "CK_FieldDefinitions_DescriptionTranslations_IsObject",
-            "jsonb_typeof(\"DescriptionTranslations\") = 'object'"));
     }
 }

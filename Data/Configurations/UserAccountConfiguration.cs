@@ -8,7 +8,19 @@ public class UserAccountConfiguration : IEntityTypeConfiguration<UserAccount>
 {
     public void Configure(EntityTypeBuilder<UserAccount> builder)
     {
-        builder.ToTable("UserAccounts");
+        builder.ToTable("UserAccounts", t => t.HasCheckConstraint(
+            "CK_UserAccounts_CompanyMembership",
+            """("CompanyId" IS NULL AND "CompanyRole" IS NULL AND "AccountTypeId" IS NOT NULL) OR ("CompanyId" IS NOT NULL AND "CompanyRole" IS NOT NULL AND "CompanyRole" IN (0, 1, 2) AND "AccountTypeId" IS NULL)"""));
+
+        builder.Property(x => x.CompanyRole).HasConversion<int>();
+        builder.Property(x => x.IsSuperAdmin).HasDefaultValue(false);
+        // Preserve explicit null for company members; the CLR and SQL defaults serve independent users.
+        builder.Property(x => x.AccountTypeId)
+            .HasDefaultValue(AccountType.FreeId).ValueGeneratedNever();
+        builder.HasOne(x => x.AccountType).WithMany()
+            .HasForeignKey(x => x.AccountTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Company).WithMany(x => x.Users)
+            .HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();

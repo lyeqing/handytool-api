@@ -22,6 +22,7 @@ public enum AuthThrottleScope
 /// </summary>
 public class AuthThrottle
 {
+    // Database columns
     public long Id { get; set; }
 
     public AuthThrottleScope Scope { get; set; }
@@ -49,5 +50,6 @@ public class AuthThrottle
     /// </summary>
     public DateTime? LockedUntil { get; set; }
 
+    // Methods
     public bool IsLockedAt(DateTime utcNow) => LockedUntil is { } until && until > utcNow;
 }

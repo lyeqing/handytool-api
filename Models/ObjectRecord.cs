@@ -9,14 +9,13 @@ namespace handytool_api.Models;
 /// </summary>
 public class ObjectRecord
 {
+    // Database columns
     public long Id { get; set; }
 
     public long ObjectDefinitionId { get; set; }
 
     /// <summary>Owning account. Resolved from the authenticated session, never from a request body.</summary>
     public long UserId { get; set; }
-
-    public UserAccount User { get; set; } = null!;
 
     public string Title { get; set; } = string.Empty;
 
@@ -32,6 +31,9 @@ public class ObjectRecord
     public DateTime CreatedDate { get; set; }
 
     public DateTime ModifiedDate { get; set; }
+
+    // Relationships — not additional database columns
+    public UserAccount User { get; set; } = null!;
 
     public ObjectDefinition ObjectDefinition { get; set; } = null!;
 }
