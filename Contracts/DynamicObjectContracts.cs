@@ -1,188 +1,99 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using handytool_api.Localization;
 using handytool_api.Models;
+using handytool_api.Services;
 using handytool_api.Validation;
 
 namespace handytool_api.Contracts;
 
-// ---------- Requests ----------
-
-public sealed record CreateFieldOptionRequest(
-    string Value,
-    string Label,
-    int DisplayOrder = 0,
-    // Language to translated label, for example {"zh-Hans": "水损"}. Unsupported languages are
-    // dropped rather than stored. The Value is never translated.
-    IReadOnlyDictionary<string, string>? LabelTranslations = null);
-
-public sealed record CreateFieldDefinitionRequest(
-    string Key,
-    string Name,
-    FieldType FieldType,
-    string? Description = null,
-    bool IsRequired = false,
-    int DisplayOrder = 0,
-    JsonElement? Settings = null,
+public sealed record CreateFieldOptionRequest(string Value, string Label, int DisplayOrder = 0,
+    IReadOnlyDictionary<string,string>? LabelTranslations = null);
+public sealed record CreateFieldDefinitionRequest(string Key, string Name, FieldType FieldType,
+    string? Description = null, bool IsRequired = false, int DisplayOrder = 0, JsonElement? Settings = null,
     IReadOnlyList<CreateFieldOptionRequest>? Options = null,
-    IReadOnlyDictionary<string, string>? NameTranslations = null,
-    IReadOnlyDictionary<string, string>? DescriptionTranslations = null);
-
-public sealed record CreateObjectDefinitionRequest(
-    string Name,
-    string? Description = null,
+    IReadOnlyDictionary<string,string>? NameTranslations = null,
+    IReadOnlyDictionary<string,string>? DescriptionTranslations = null,
+    IReadOnlyDictionary<string,string>? PlaceholderTranslations = null,
+    CreateFieldDefinitionRequest? Item = null);
+public sealed record CreateObjectDefinitionRequest(string Name, string? Description = null,
     IReadOnlyList<CreateFieldDefinitionRequest>? Fields = null,
-    IReadOnlyDictionary<string, string>? NameTranslations = null,
-    IReadOnlyDictionary<string, string>? DescriptionTranslations = null);
+    IReadOnlyDictionary<string,string>? NameTranslations = null,
+    IReadOnlyDictionary<string,string>? DescriptionTranslations = null,
+    long MasterCategoryId = MasterCategory.UncategorizedId, long? SubcategoryId = null,
+    DefinitionVisibility Visibility = DefinitionVisibility.Private, int RequiredAccessLevel = 0);
+public sealed record UpdateDefinitionRequest(string Name, string? Description, DefinitionVisibility Visibility,
+    int RequiredAccessLevel = 0, bool IsActive = true);
+public sealed record SaveObjectRecordRequest(string? Title = null, JsonElement Values = default,
+    string? Description = null, long? Revision = null, RecordVisibility Visibility = RecordVisibility.Private);
 
-public sealed record SaveObjectRecordRequest(
-    string Title,
-    JsonElement Values,
-    string? Description = null);
-
-// ---------- Responses ----------
-
-/// <summary>
-/// <paramref name="Label"/> is already resolved for the request language - the caller never sees the
-/// translation map unless it asked for the editing view. <paramref name="Value"/> is the stable
-/// identifier and is identical in every language.
-/// </summary>
-public sealed record FieldOptionResponse(
-    long Id,
-    string Value,
-    string Label,
-    int DisplayOrder,
-    bool IsActive,
-    IReadOnlyDictionary<string, string>? LabelTranslations = null)
+public sealed record FieldOptionResponse(long Id, string Value, string Label, int DisplayOrder, bool IsActive,
+    IReadOnlyDictionary<string,string>? LabelTranslations = null)
 {
-    public static FieldOptionResponse From(FieldOption option, string language) => new(
-        option.Id,
-        option.Value,
-        LocalizedText.Resolve(option.Label, option.LabelTranslations, language),
-        option.DisplayOrder,
-        option.IsActive);
-
-    /// <summary>For the editing screen, which needs every language at once.</summary>
-    public static FieldOptionResponse ForEditing(FieldOption option, string language) =>
-        From(option, language) with { LabelTranslations = LocalizedText.ToDictionary(option.LabelTranslations) };
+    public static FieldOptionResponse From(FieldOption o, string language) => new(o.Id,o.Value,
+        o.Translations.FirstOrDefault(t => t.LanguageCode == language)?.Label ?? o.Label,o.DisplayOrder,o.IsActive);
+    public static FieldOptionResponse ForEditing(FieldOption o, string language) =>
+        From(o,language) with { LabelTranslations = o.Translations.ToDictionary(t=>t.LanguageCode,t=>t.Label) };
 }
-
-public sealed record FieldDefinitionResponse(
-    long Id,
-    string Key,
-    string Name,
-    string? Description,
-    FieldType FieldType,
-    bool IsRequired,
-    bool IsActive,
-    int DisplayOrder,
-    JsonElement Settings,
-    IReadOnlyList<FieldOptionResponse> Options,
-    IReadOnlyDictionary<string, string>? NameTranslations = null,
-    IReadOnlyDictionary<string, string>? DescriptionTranslations = null)
+public sealed record FieldDefinitionResponse(long Id, string Key, string Name, string? Description, FieldType FieldType,
+    bool IsRequired, bool IsActive, int DisplayOrder, JsonElement Settings, IReadOnlyList<FieldOptionResponse> Options,
+    IReadOnlyDictionary<string,string>? NameTranslations = null,
+    IReadOnlyDictionary<string,string>? DescriptionTranslations = null,
+    IReadOnlyDictionary<string,string>? PlaceholderTranslations = null,
+    FieldDefinitionResponse? Item = null, IReadOnlyList<FieldDefinitionResponse>? Fields = null)
 {
-    public static FieldDefinitionResponse From(FieldDefinition field, string language) => new(
-        field.Id,
-        field.Key,
-        LocalizedText.Resolve(field.Name, field.NameTranslations, language),
-        field.Description is null ? null : LocalizedText.Resolve(field.Description, field.DescriptionTranslations, language),
-        field.FieldType,
-        field.IsRequired,
-        field.IsActive,
-        field.DisplayOrder,
-        field.Settings.RootElement.Clone(),
-        field.Options.OrderBy(o => o.DisplayOrder).Select(o => FieldOptionResponse.From(o, language)).ToList());
-
-    public static FieldDefinitionResponse ForEditing(FieldDefinition field, string language) =>
-        From(field, language) with
+    public static FieldDefinitionResponse From(FieldDefinition f, string language, int depth = 0)
+    {
+        var t = f.Translations.FirstOrDefault(x=>x.LanguageCode==language);
+        var settings = FieldConfiguration.Settings(f);
+        if (t?.Placeholder != null)
         {
-            NameTranslations = LocalizedText.ToDictionary(field.NameTranslations),
-            DescriptionTranslations = LocalizedText.ToDictionary(field.DescriptionTranslations),
-            Options = field.Options.OrderBy(o => o.DisplayOrder).Select(o => FieldOptionResponse.ForEditing(o, language)).ToList()
-        };
+            var map = settings.Deserialize<Dictionary<string,JsonElement>>()!;
+            map["placeholder"] = JsonSerializer.SerializeToElement(t.Placeholder);
+            settings = JsonSerializer.SerializeToElement(map);
+        }
+        return new(f.Id,f.Key,t?.Name ?? f.Name,t?.Description ?? f.Description,f.FieldType,
+            f.IsRequired,f.IsActive,f.DisplayOrder,settings,
+            f.Options.OrderBy(o=>o.DisplayOrder).ThenBy(o=>o.Id).Select(o=>FieldOptionResponse.From(o,language)).ToList(),
+            Item: depth < 8 && f.CollectionField?.ItemDefinition is { } item ? From(item,language,depth+1) : null,
+            Fields: depth < 8 && f.ObjectField?.ReferencedObjectDefinition is { } obj
+                ? obj.Fields.OrderBy(x=>x.DisplayOrder).ThenBy(x=>x.Id).Select(x=>From(x,language,depth+1)).ToList() : null);
+    }
+    public static FieldDefinitionResponse ForEditing(FieldDefinition f,string language) => From(f,language) with {
+        NameTranslations = f.Translations.Where(t=>t.Name!=null).ToDictionary(t=>t.LanguageCode,t=>t.Name!),
+        DescriptionTranslations = f.Translations.Where(t=>t.Description!=null).ToDictionary(t=>t.LanguageCode,t=>t.Description!),
+        PlaceholderTranslations = f.Translations.Where(t=>t.Placeholder!=null).ToDictionary(t=>t.LanguageCode,t=>t.Placeholder!),
+        Options = f.Options.OrderBy(o=>o.DisplayOrder).Select(o=>FieldOptionResponse.ForEditing(o,language)).ToList()
+    };
 }
-
-public sealed record ObjectDefinitionResponse(
-    long Id,
-    long UserId,
-    string Name,
-    string Description,
-    bool IsActive,
-    DateTime CreatedDate,
-    DateTime ModifiedDate,
-    IReadOnlyList<FieldDefinitionResponse>? Fields = null,
-    IReadOnlyDictionary<string, string>? NameTranslations = null,
-    IReadOnlyDictionary<string, string>? DescriptionTranslations = null)
+public sealed record ObjectDefinitionResponse(long Id, long CreatedByUserId, string Name, string Description, bool IsActive,
+    DateTime CreatedDate, DateTime ModifiedDate, long? CompanyId, DefinitionVisibility Visibility, int RequiredAccessLevel,
+    long MasterCategoryId, long? SubcategoryId, IReadOnlyList<FieldDefinitionResponse>? Fields = null,
+    IReadOnlyDictionary<string,string>? NameTranslations = null,
+    IReadOnlyDictionary<string,string>? DescriptionTranslations = null)
 {
-    public static ObjectDefinitionResponse Summary(ObjectDefinition definition, string language) => new(
-        definition.Id,
-        definition.UserId,
-        LocalizedText.Resolve(definition.Name, definition.NameTranslations, language),
-        LocalizedText.Resolve(definition.Description, definition.DescriptionTranslations, language),
-        definition.IsActive,
-        definition.CreatedDate,
-        definition.ModifiedDate);
-
-    /// <summary>
-    /// The reading view: every label already resolved for one language, no translation maps. This is
-    /// what the website renders.
-    /// </summary>
-    public static ObjectDefinitionResponse WithFields(ObjectDefinition definition, string language) =>
-        Summary(definition, language) with
-        {
-            Fields = definition.Fields
-                .OrderBy(f => f.DisplayOrder)
-                .Select(f => FieldDefinitionResponse.From(f, language))
-                .ToList()
-        };
-
-    /// <summary>
-    /// The editing view: the same thing plus every translation, so a schema editor can show and
-    /// change all languages at once.
-    /// </summary>
-    public static ObjectDefinitionResponse ForEditing(ObjectDefinition definition, string language) =>
-        Summary(definition, language) with
-        {
-            NameTranslations = LocalizedText.ToDictionary(definition.NameTranslations),
-            DescriptionTranslations = LocalizedText.ToDictionary(definition.DescriptionTranslations),
-            Fields = definition.Fields
-                .OrderBy(f => f.DisplayOrder)
-                .Select(f => FieldDefinitionResponse.ForEditing(f, language))
-                .ToList()
-        };
+    public static ObjectDefinitionResponse Summary(ObjectDefinition d,string language)
+    {
+        var t=d.Translations.FirstOrDefault(x=>x.LanguageCode==language);
+        return new(d.Id,d.CreatedByUserId,t?.Name??d.Name,t?.Description??d.Description,d.IsActive,d.CreatedDate,d.ModifiedDate,
+            d.CompanyId,d.Visibility,d.RequiredAccessLevel,d.MasterCategoryId,d.SubcategoryId);
+    }
+    public static ObjectDefinitionResponse WithFields(ObjectDefinition d,string language) => Summary(d,language) with {
+        Fields=d.Fields.OrderBy(f=>f.DisplayOrder).ThenBy(f=>f.Id).Select(f=>FieldDefinitionResponse.From(f,language)).ToList()
+    };
+    public static ObjectDefinitionResponse ForEditing(ObjectDefinition d,string language) => Summary(d,language) with {
+        Fields=d.Fields.OrderBy(f=>f.DisplayOrder).ThenBy(f=>f.Id).Select(f=>FieldDefinitionResponse.ForEditing(f,language)).ToList(),
+        NameTranslations=d.Translations.Where(t=>t.Name!=null).ToDictionary(t=>t.LanguageCode,t=>t.Name!),
+        DescriptionTranslations=d.Translations.Where(t=>t.Description!=null).ToDictionary(t=>t.LanguageCode,t=>t.Description!)
+    };
 }
-
-public sealed record ObjectRecordResponse(
-    long Id,
-    long ObjectDefinitionId,
-    long UserId,
-    string Title,
-    string Description,
-    JsonElement Values,
-    DateTime CreatedDate,
-    DateTime ModifiedDate)
+public sealed record ObjectRecordResponse(long Id,long ObjectDefinitionId,long? CreatedByUserId,string? Title,string? Description,
+    JsonElement Values,DateTime CreatedDate,DateTime ModifiedDate,long? CompanyId,long Revision,RecordVisibility Visibility)
 {
-    public static ObjectRecordResponse From(ObjectRecord record) => new(
-        record.Id,
-        record.ObjectDefinitionId,
-        record.UserId,
-        record.Title,
-        record.Description,
-        record.Values.RootElement.Clone(),
-        record.CreatedDate,
-        record.ModifiedDate);
+    public static ObjectRecordResponse From(ObjectRecord r) => new(r.Id,r.ObjectDefinitionId,r.CreatedByUserId,r.Title,r.Description,
+        r.Values.RootElement.Clone(),r.CreatedDate,r.ModifiedDate,r.CompanyId,r.Revision,r.Visibility);
 }
-
-public sealed record PagedResponse<T>(IReadOnlyList<T> Items, int Skip, int Take, long Total);
-
-/// <summary>
-/// Error envelope returned for both definition-shape errors and dynamic value errors, so mobile
-/// clients only ever have to parse one failure shape.
-/// </summary>
-public sealed record ValidationErrorResponse(
-    string Title,
-    IReadOnlyList<RecordValidationError> Errors)
+public sealed record PagedResponse<T>(IReadOnlyList<T> Items,int Skip,int Take,long Total);
+public sealed record ValidationErrorResponse(string Title,IReadOnlyList<RecordValidationError> Errors)
 {
-    [JsonPropertyName("status")]
-    public int Status => StatusCodes.Status400BadRequest;
+    [JsonPropertyName("status")] public int Status => 400;
 }

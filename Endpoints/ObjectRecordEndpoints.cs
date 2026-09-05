@@ -3,305 +3,109 @@ using handytool_api.Contracts;
 using handytool_api.Data;
 using handytool_api.Models;
 using handytool_api.Security;
+using handytool_api.Services;
 using handytool_api.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace handytool_api.Endpoints;
 
-/// <summary>
-/// Data endpoints. Every write path here runs <see cref="RecordValueValidator"/> before persisting.
-/// </summary>
 public static class ObjectRecordEndpoints
 {
-    private static readonly JsonDocument EmptyValues = JsonDocument.Parse(RecordValues.EmptyJson);
-
     public static void MapObjectRecordEndpoints(this IEndpointRouteBuilder routes)
     {
-        routes.MapGroup("/api/object-definitions/{definitionId:long}/records")
-            .WithTags("Records")
-            .RequireAuthorization()
-            .WithRateLimit(RateLimitPolicies.General)
-            .MapDefinitionScopedRecordEndpoints();
-
-        var records = routes.MapGroup("/api/records")
-            .WithTags("Records")
-            .RequireAuthorization()
-            .WithRateLimit(RateLimitPolicies.General);
-
-        records.MapGet("/{id:long}", GetAsync)
-            .WithName("GetRecord")
-            .WithSummary("Read one record")
-            .Produces<ObjectRecordResponse>()
-            .Produces(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
-
-        records.MapPut("/{id:long}", UpdateAsync)
-            .WithName("UpdateRecord")
-            .WithSummary("Replace one record")
-            .WithDescription("Values are validated against the definition's active fields before saving.")
-            .Produces<ObjectRecordResponse>()
-            .Produces<ValidationErrorResponse>(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
-
-        records.MapDelete("/{id:long}", DeleteAsync)
-            .WithName("DeleteRecord")
-            .WithSummary("Delete one record")
-            .Produces(StatusCodes.Status204NoContent)
-            .Produces(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+        var group = routes.MapGroup("/api").WithTags("Records").WithRateLimit(RateLimitPolicies.General).AddEndpointFilter<ApiFailureFilter>();
+        group.MapGet("/object-definitions/{definitionId:long}/records", ListAsync);
+        group.MapPost("/object-definitions/{definitionId:long}/records", CreateAsync);
+        group.MapGet("/records/{id:long}", GetAsync);
+        group.MapPut("/records/{id:long}", UpdateAsync);
+        group.MapDelete("/records/{id:long}", DeleteAsync);
+        group.MapGet("/access", async (HttpContext http, AccessService access, TrialIdentity trial, HandyToolDbContext db, CancellationToken ct) =>
+        {
+            var actor = await access.ActorAsync(http,ct);
+            var device = actor.UserId == null ? trial.Get(http) : null;
+            var used = device == null ? 0 : (await db.TrialUsage.FindAsync(["device:"+device],ct))?.CreatedCount ?? 0;
+            return Results.Ok(new { actor.UserId, actor.CompanyId, actor.Role, actor.SuperAdmin, actor.Level, actor.Seats,
+                actor.CanCreateDefinition, DefinitionLimit = PlanLimits.Definitions(actor), MonthlyRecordLimit = PlanLimits.Records(actor),
+                TrialRemaining = actor.UserId == null ? Math.Max(0,7-used) : (int?)null });
+        });
     }
-
-    private static void MapDefinitionScopedRecordEndpoints(this RouteGroupBuilder group)
+    private static async Task<IResult> ListAsync(long definitionId,HttpContext http,AccessService access,TrialIdentity trial,
+        CancellationToken ct,int skip=0,int take=50)
     {
-        group.MapGet("/", ListAsync)
-            .WithName("ListRecords")
-            .WithSummary("List the records of one object definition")
-            .WithDescription("Newest first. `take` is clamped to 1-200.")
-            .Produces<PagedResponse<ObjectRecordResponse>>()
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
-
-        group.MapPost("/", CreateAsync)
-            .WithName("CreateRecord")
-            .WithSummary("Add a record to an object definition")
-            .WithDescription(
-                "`values` must be a JSON object keyed by field key, holding values only - never labels " +
-                "or other metadata. Types are not coerced: \"8\" is rejected for a numeric field. " +
-                "Dropdown and multi-select entries must be active FieldOption values.")
-            .Produces<ObjectRecordResponse>(StatusCodes.Status201Created)
-            .Produces<ValidationErrorResponse>(StatusCodes.Status400BadRequest)
-            .Produces(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+        var a=await access.ActorAsync(http,ct);
+        var q=access.Records(a,a.UserId==null?trial.Get(http):null).AsNoTracking().Where(r=>r.ObjectDefinitionId==definitionId);
+        skip=Math.Max(0,skip);take=Math.Clamp(take,1,200);
+        var count=await q.LongCountAsync(ct);
+        var rows=await q.OrderByDescending(r=>r.CreatedDate).ThenByDescending(r=>r.Id).Skip(skip).Take(take).ToListAsync(ct);
+        return Results.Ok(new PagedResponse<ObjectRecordResponse>(rows.Select(ObjectRecordResponse.From).ToList(),skip,take,count));
     }
-
-    private static async Task<IResult> ListAsync(
-        long definitionId,
-        HttpContext httpContext,
-        HandyToolDbContext db,
-        CancellationToken cancellationToken,
-        int skip = 0,
-        int take = 50)
+    private static async Task<IResult> GetAsync(long id,HttpContext http,AccessService access,TrialIdentity trial,CancellationToken ct)
     {
-        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
-        {
-            return Results.Unauthorized();
-        }
-
-        skip = Math.Max(0, skip);
-        take = Math.Clamp(take, 1, 200);
-
-        var query = db.ObjectRecords
-            .AsNoTracking()
-            .Where(r => r.ObjectDefinitionId == definitionId && r.UserId == userId);
-
-        var total = await query.LongCountAsync(cancellationToken);
-
-        var records = await query
-            .OrderByDescending(r => r.CreatedDate)
-            .ThenByDescending(r => r.Id)
-            .Skip(skip)
-            .Take(take)
-            .ToListAsync(cancellationToken);
-
-        return Results.Ok(new PagedResponse<ObjectRecordResponse>(
-            records.Select(ObjectRecordResponse.From).ToList(),
-            skip,
-            take,
-            total));
+        var a=await access.ActorAsync(http,ct);
+        var r=await access.Records(a,a.UserId==null?trial.Get(http):null).AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id,ct);
+        return r==null?Results.NotFound():Results.Ok(ObjectRecordResponse.From(r));
     }
-
-    private static async Task<IResult> GetAsync(
-        long id,
-        HttpContext httpContext,
-        HandyToolDbContext db,
-        CancellationToken cancellationToken)
+    private static JsonElement Values(SaveObjectRecordRequest request) =>
+        request.Values.ValueKind==JsonValueKind.Undefined?JsonSerializer.SerializeToElement(new {}):request.Values;
+    private static void ValidateEnvelope(SaveObjectRecordRequest r,AccessActor a)
     {
-        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
-        {
-            return Results.Unauthorized();
-        }
-
-        var record = await db.ObjectRecords
-            .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
-
-        return record is null ? Results.NotFound() : Results.Ok(ObjectRecordResponse.From(record));
+        if(r.Title?.Length>300 || r.Description?.Length>4000) throw new ApiFailure(400,"too_long","Title or description exceeds its length limit.");
+        if(!Enum.IsDefined(r.Visibility) || (r.Visibility==RecordVisibility.Company && a.CompanyId==null))
+            throw new ApiFailure(400,"invalid_visibility","Company visibility requires company membership.");
+        if(Values(r).GetRawText().Length>1_000_000) throw new ApiFailure(413,"record_too_large","Record exceeds the size limit.");
     }
-
-    /// <summary>Log category for these endpoints - static classes cannot be used as ILogger&lt;T&gt;.</summary>
-    private const string LogCategory = "handytool_api.Endpoints.ObjectRecords";
-
-    private static async Task<IResult> CreateAsync(
-        long definitionId,
-        SaveObjectRecordRequest request,
-        HttpContext httpContext,
-        HandyToolDbContext db,
-        RecordValueValidator validator,
-        ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+    private static async Task<IResult> CreateAsync(long definitionId,SaveObjectRecordRequest request,HttpContext http,
+        HandyToolDbContext db,AccessService access,DefinitionLoader loader,TrialIdentity trial,TrialQuota trials,CancellationToken ct)
     {
-        var logger = loggerFactory.CreateLogger(LogCategory);
-
-        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
-        {
-            return Results.Unauthorized();
-        }
-
-        var definition = await db.ObjectDefinitions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == definitionId && d.UserId == userId, cancellationToken);
-
-        if (definition is null)
-        {
-            return Results.NotFound();
-        }
-
-        if (!definition.IsActive)
-        {
-            return ApiResults.ValidationFailed(
-                "The object definition is inactive.",
-                new RecordValidationError(string.Empty, "definition_inactive", "New records cannot be added to an inactive definition."));
-        }
-
-        var values = Normalize(request.Values);
-
-        var titleError = ValidateTitle(request.Title);
-        var validation = await validator.ValidateAsync(definitionId, values, cancellationToken);
-
-        if (titleError is not null || !validation.IsValid)
-        {
-            var failures = Combine(titleError, validation);
-            logger.LogInformation(
-                "Rejected record for definition {DefinitionId}, user {UserId}: {FieldKeys} failed with {ErrorCodes}",
-                definitionId,
-                userId,
-                failures.Select(e => e.FieldKey),
-                failures.Select(e => e.ErrorCode).Distinct());
-            return ApiResults.ValidationFailed("The record is invalid.", failures);
-        }
-
-        var now = DateTime.UtcNow;
-
-        var record = new ObjectRecord
-        {
-            ObjectDefinitionId = definitionId,
-            UserId = userId,
-            Title = request.Title.Trim(),
-            Description = request.Description?.Trim() ?? string.Empty,
-            Values = JsonDocument.Parse(values.GetRawText()),
-            CreatedDate = now,
-            ModifiedDate = now
-        };
-
-        db.ObjectRecords.Add(record);
-        await db.SaveChangesAsync(cancellationToken);
-
-        logger.LogInformation(
-            "Created record {RecordId} on definition {DefinitionId} for user {UserId}",
-            record.Id,
-            definitionId,
-            userId);
-
-        return Results.Created($"/api/records/{record.Id}", ObjectRecordResponse.From(record));
+        var a=await access.ActorAsync(http,ct);
+        ValidateEnvelope(request,a);
+        await using var tx=await db.Database.BeginTransactionAsync(ct);
+        if(a.UserId!=null) { await access.LockAsync(a,ct); await access.CheckQuotaAsync(a,false,ct); }
+        var d=await loader.LoadAsync(definitionId,a,ct);
+        if(d==null) return Results.NotFound();
+        if(!d.IsActive) throw new ApiFailure(400,"definition_inactive","Definition is inactive.");
+        var values=Values(request);
+        var validation=RecordValueValidator.Validate(d.Fields.ToList(),values);
+        if(!validation.IsValid) return ApiResults.ValidationFailed("The record is invalid.",validation.Errors.ToArray());
+        var device=a.UserId==null?trial.Get(http):null;
+        if(device!=null) await trials.ConsumeAsync(http,device,ct);
+        var now=DateTime.UtcNow;
+        var r=new ObjectRecord { ObjectDefinitionId=d.Id,CreatedByUserId=a.UserId,CompanyId=a.CompanyId,AnonymousDeviceHash=device,
+            Title=Clean(request.Title),Description=Clean(request.Description),Visibility=request.Visibility,
+            Values=JsonDocument.Parse(values.GetRawText()),CreatedDate=now,ModifiedDate=now };
+        db.ObjectRecords.Add(r);await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);
+        return Results.Created($"/api/records/{r.Id}",ObjectRecordResponse.From(r));
     }
-
-    private static async Task<IResult> UpdateAsync(
-        long id,
-        SaveObjectRecordRequest request,
-        HttpContext httpContext,
-        HandyToolDbContext db,
-        RecordValueValidator validator,
-        CancellationToken cancellationToken)
+    private static async Task<IResult> UpdateAsync(long id,SaveObjectRecordRequest request,HttpContext http,
+        HandyToolDbContext db,AccessService access,DefinitionLoader loader,TrialIdentity trial,CancellationToken ct)
     {
-        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
-        {
-            return Results.Unauthorized();
-        }
-
-        var record = await db.ObjectRecords
-            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
-
-        if (record is null)
-        {
-            return Results.NotFound();
-        }
-
-        var values = Normalize(request.Values);
-
-        var titleError = ValidateTitle(request.Title);
-        var validation = await validator.ValidateAsync(record.ObjectDefinitionId, values, cancellationToken);
-
-        if (titleError is not null || !validation.IsValid)
-        {
-            return ApiResults.ValidationFailed("The record is invalid.", Combine(titleError, validation));
-        }
-
-        record.Title = request.Title.Trim();
-        record.Description = request.Description?.Trim() ?? string.Empty;
-        record.Values = JsonDocument.Parse(values.GetRawText());
-        record.ModifiedDate = DateTime.UtcNow;
-
-        await db.SaveChangesAsync(cancellationToken);
-
-        return Results.Ok(ObjectRecordResponse.From(record));
+        var a=await access.ActorAsync(http,ct);var device=a.UserId==null?trial.Get(http):null;
+        var r=await access.Records(a,device).SingleOrDefaultAsync(x=>x.Id==id,ct);
+        if(r==null)return Results.NotFound();
+        if(!AccessService.CanWriteRecord(a,r,device))return Results.Forbid();
+        // Validate against the record's owning company, not a SuperAdmin's own membership.
+        ValidateEnvelope(request,a with { CompanyId=r.CompanyId });
+        if(request.Revision==null)throw new ApiFailure(400,"revision_required","Include the revision loaded with this record.");
+        if(request.Revision!=r.Revision)throw new ApiFailure(409,"revision_conflict","This record changed. Reload before saving.");
+        var d=await loader.LoadAsync(r.ObjectDefinitionId,a,ct);
+        if(d==null)throw new ApiFailure(403,"definition_unavailable","The record's definition is unavailable.");
+        var values=Values(request);var validation=RecordValueValidator.Validate(d.Fields.ToList(),values);
+        if(!validation.IsValid)return ApiResults.ValidationFailed("The record is invalid.",validation.Errors.ToArray());
+        r.Title=Clean(request.Title);r.Description=Clean(request.Description);r.Values=JsonDocument.Parse(values.GetRawText());
+        r.Visibility=request.Visibility;r.Revision=checked(r.Revision+1);r.ModifiedDate=DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ObjectRecordResponse.From(r));
     }
-
-    private static async Task<IResult> DeleteAsync(
-        long id,
-        HttpContext httpContext,
-        HandyToolDbContext db,
-        ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(long id,HttpContext http,HandyToolDbContext db,AccessService access,TrialIdentity trial,CancellationToken ct,long? revision=null)
     {
-        var logger = loggerFactory.CreateLogger(LogCategory);
-
-        if (!CurrentUser.TryGetUserId(httpContext, out var userId))
-        {
-            return Results.Unauthorized();
-        }
-
-        var record = await db.ObjectRecords
-            .FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId, cancellationToken);
-
-        if (record is null)
-        {
-            return Results.NotFound();
-        }
-
-        db.ObjectRecords.Remove(record);
-        await db.SaveChangesAsync(cancellationToken);
-
-        // User data was destroyed - always worth a line.
-        logger.LogInformation(
-            "Deleted record {RecordId} on definition {DefinitionId} for user {UserId}",
-            id,
-            record.ObjectDefinitionId,
-            userId);
-
+        var a=await access.ActorAsync(http,ct);var device=a.UserId==null?trial.Get(http):null;
+        var r=await access.Records(a,device).SingleOrDefaultAsync(x=>x.Id==id,ct);
+        if(r==null)return Results.NotFound();
+        if(!AccessService.CanWriteRecord(a,r,device))return Results.Forbid();
+        if(revision==null)throw new ApiFailure(400,"revision_required","Include the revision when deleting.");
+        if(revision!=r.Revision)throw new ApiFailure(409,"revision_conflict","This record changed. Reload before deleting.");
+        db.ObjectRecords.Remove(r);await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
-
-    /// <summary>A missing "values" property is treated as an empty object, not as a bad request.</summary>
-    private static JsonElement Normalize(JsonElement values) =>
-        values.ValueKind == JsonValueKind.Undefined ? EmptyValues.RootElement : values;
-
-    private static RecordValidationError? ValidateTitle(string? title) =>
-        string.IsNullOrWhiteSpace(title)
-            ? new RecordValidationError("title", RecordValidationErrorCodes.Required, "Title is required.")
-            : title.Trim().Length > 300
-                ? new RecordValidationError("title", RecordValidationErrorCodes.TooLong, "Title must be at most 300 characters.")
-                : null;
-
-    private static List<RecordValidationError> Combine(RecordValidationError? titleError, RecordValidationResult validation)
-    {
-        var errors = new List<RecordValidationError>();
-
-        if (titleError is not null)
-        {
-            errors.Add(titleError);
-        }
-
-        errors.AddRange(validation.Errors);
-        return errors;
-    }
+    private static string? Clean(string? text)=>string.IsNullOrWhiteSpace(text)?null:text.Trim();
 }

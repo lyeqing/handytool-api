@@ -15,10 +15,15 @@ public class ObjectRecord
     public long ObjectDefinitionId { get; set; }
 
     /// <summary>Original creator. Preserved when company membership changes.</summary>
-    public long CreatedByUserId { get; set; }
+    public long? CreatedByUserId { get; set; }
 
     /// <summary>Owning company at creation; null for independent users' personal records.</summary>
     public long? CompanyId { get; set; }
+
+    public RecordVisibility Visibility { get; set; } = RecordVisibility.Private;
+
+    /// <summary>Server-derived device identity for anonymous trial records; never returned by the API.</summary>
+    public string? AnonymousDeviceHash { get; set; }
 
     /// <summary>Application-managed concurrency token; increment on each successful update.</summary>
     public long Revision { get; set; } = 1;
@@ -39,7 +44,7 @@ public class ObjectRecord
     public DateTime ModifiedDate { get; set; }
 
     // Relationships — not additional database columns
-    public UserAccount CreatedByUser { get; set; } = null!;
+    public UserAccount? CreatedByUser { get; set; }
 
     public CompanyAccount? Company { get; set; }
 

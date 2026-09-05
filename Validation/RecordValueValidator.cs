@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using handytool_api.Data;
 using handytool_api.Models;
+using handytool_api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace handytool_api.Validation;
@@ -30,23 +31,21 @@ public sealed class RecordValueValidator
         JsonElement values,
         CancellationToken cancellationToken = default)
     {
-        var fields = await _db.FieldDefinitions
-            .AsNoTracking()
-            .Where(f => f.ObjectDefinitionId == objectDefinitionId && f.IsActive)
-            .Include(f => f.Options.Where(o => o.IsActive))
-            .OrderBy(f => f.DisplayOrder)
-            .ToListAsync(cancellationToken);
-
-        return Validate(fields, values);
+        var definition = await new DefinitionLoader(_db, new AccessService(_db)).LoadAsync(
+            objectDefinitionId, new AccessActor(null,null,null,true,3,1), cancellationToken);
+        return Validate(definition?.Fields.ToList() ?? [], values);
     }
 
     /// <summary>
     /// Pure validation against a supplied set of field definitions.
     /// Inactive fields and inactive options are ignored even if they are passed in.
     /// </summary>
-    public static RecordValidationResult Validate(IReadOnlyCollection<FieldDefinition> fields, JsonElement values)
+    public static RecordValidationResult Validate(IReadOnlyCollection<FieldDefinition> fields, JsonElement values) => ValidateFields(fields, values, 0);
+
+    private static RecordValidationResult ValidateFields(IReadOnlyCollection<FieldDefinition> fields, JsonElement values, int depth)
     {
         var errors = new List<RecordValidationError>();
+        if (depth > 8) return new RecordValidationResult([new("", "nesting_limit", "Values are nested too deeply.")]);
 
         if (values.ValueKind != JsonValueKind.Object)
         {
@@ -60,8 +59,10 @@ public sealed class RecordValueValidator
         var activeFields = fields.Where(f => f.IsActive).ToList();
         var knownKeys = activeFields.Select(f => f.Key).ToHashSet(StringComparer.Ordinal);
 
+        var seenKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in values.EnumerateObject())
         {
+            if (!seenKeys.Add(property.Name)) errors.Add(new(property.Name, "duplicate_key", "Duplicate field key."));
             if (!knownKeys.Contains(property.Name))
             {
                 errors.Add(new RecordValidationError(
@@ -86,17 +87,18 @@ public sealed class RecordValueValidator
                 continue;
             }
 
-            ValidateValue(field, value, errors);
+            ValidateValue(field, value, errors, depth);
         }
 
         return errors.Count == 0 ? RecordValidationResult.Success : new RecordValidationResult(errors);
     }
 
-    private static void ValidateValue(FieldDefinition field, JsonElement value, List<RecordValidationError> errors)
+    private static void ValidateValue(FieldDefinition field, JsonElement value, List<RecordValidationError> errors, int depth)
     {
         switch (field.FieldType)
         {
-            case FieldType.Text:
+            case FieldType.ShortText:
+            case FieldType.Markdown:
             case FieldType.LongText:
                 ValidateText(field, value, errors);
                 break;
@@ -122,11 +124,48 @@ public sealed class RecordValueValidator
             case FieldType.Range:
                 ValidateRange(field, value, errors);
                 break;
+            case FieldType.RadioGroup:
             case FieldType.Dropdown:
                 ValidateDropdown(field, value, errors);
                 break;
+            case FieldType.Checklist:
             case FieldType.MultiSelect:
                 ValidateMultiSelect(field, value, errors);
+                break;
+            case FieldType.Object:
+                if (field.ObjectField?.ReferencedObjectDefinition is not { IsActive: true } objectDefinition)
+                    errors.Add(new(field.Key, "definition_inactive", "Nested object definition is unavailable."));
+                else
+                    errors.AddRange(ValidateFields(objectDefinition.Fields.ToList(), value, depth + 1).Errors
+                        .Select(e => e with { FieldKey = field.Key + (e.FieldKey.Length > 0 ? "." + e.FieldKey : "") }));
+                break;
+            case FieldType.Collection:
+                if (value.ValueKind != JsonValueKind.Array) { errors.Add(InvalidType(field, "an array", value)); break; }
+                var length = value.GetArrayLength();
+                if (length > 1000) { errors.Add(new(field.Key,"too_many_items","Collections support at most 1000 items.")); break; }
+                if (depth >= 8) { errors.Add(new(field.Key,"nesting_limit","Values are nested too deeply.")); break; }
+                var collection = field.CollectionField!;
+                if (field.IsRequired && length == 0) errors.Add(Required(field));
+                if (collection.MinimumItems is { } minItems && length < minItems) errors.Add(new(field.Key,"too_few_items","Too few items."));
+                if (collection.MaximumItems is { } maxItems && length > maxItems) errors.Add(new(field.Key,"too_many_items","Too many items."));
+                for (var i = 0; i < length; i++)
+                {
+                    var itemErrors = new List<RecordValidationError>();
+                    if (value[i].ValueKind == JsonValueKind.Null) itemErrors.Add(new("", "invalid_type", "Collection items cannot be null."));
+                    else ValidateValue(collection.ItemDefinition, value[i], itemErrors, depth + 1);
+                    errors.AddRange(itemErrors.Select(e => e with { FieldKey = $"{field.Key}[{i}]" +
+                        (e.FieldKey.StartsWith(collection.ItemDefinition.Key + ".") ? e.FieldKey[collection.ItemDefinition.Key.Length..] : "") }));
+                }
+                break;
+            case FieldType.Time:
+                if (value.ValueKind != JsonValueKind.String || !TimeOnly.TryParseExact(value.GetString(),
+                    ["HH:mm", "HH:mm:ss"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var time))
+                { errors.Add(new(field.Key,"invalid_format","Time must use HH:mm or HH:mm:ss.")); break; }
+                var bounds = field.TimeField!;
+                if (bounds.MinimumTime is { } minTime && time < minTime) errors.Add(new(field.Key,"below_minimum","Time is too early."));
+                if (bounds.MaximumTime is { } maxTime && time > maxTime) errors.Add(new(field.Key,"above_maximum","Time is too late."));
+                if (bounds.StepSeconds is { } seconds && (time.ToTimeSpan().TotalSeconds - (bounds.MinimumTime ?? TimeOnly.MinValue).ToTimeSpan().TotalSeconds) % seconds != 0)
+                    errors.Add(new(field.Key,"invalid_step","Time does not match the configured step."));
                 break;
             default:
                 // A field type was added to the enum without validation support - fail loudly rather
@@ -214,41 +253,18 @@ public sealed class RecordValueValidator
         ValidateNumericBounds(field, number, errors);
     }
 
-    private static void ValidateRange(FieldDefinition field, JsonElement value, List<RecordValidationError> errors)
-    {
-        if (value.ValueKind != JsonValueKind.Number)
-        {
-            errors.Add(InvalidType(field, "a JSON number", value));
-            return;
-        }
-
-        if (!value.TryGetDecimal(out var number))
-        {
-            errors.Add(new RecordValidationError(
-                field.Key,
-                RecordValidationErrorCodes.InvalidType,
-                $"'{field.Name}' must be a number within the supported range."));
-            return;
-        }
-
-        ValidateNumericBounds(field, number, errors);
-
-        var step = GetDecimalSetting(field, "step");
-        if (step is { } stepValue && stepValue > 0)
-        {
-            var origin = GetDecimalSetting(field, "minimum") ?? 0m;
-            if ((number - origin) % stepValue != 0m)
-            {
-                errors.Add(new RecordValidationError(
-                    field.Key,
-                    RecordValidationErrorCodes.InvalidStep,
-                    $"'{field.Name}' must be in steps of {stepValue} starting from {origin}."));
-            }
-        }
-    }
-
+    private static void ValidateRange(FieldDefinition field, JsonElement value, List<RecordValidationError> errors) =>
+        ValidateDecimal(field, value, errors);
     private static void ValidateNumericBounds(FieldDefinition field, decimal number, List<RecordValidationError> errors)
     {
+        var step = GetDecimalSetting(field, "step");
+        if (step is > 0)
+        {
+            var origin = GetDecimalSetting(field, "minimum") ?? 0m;
+            // Taking each remainder first avoids overflow when values span the decimal range.
+            if (((number % step.Value) - (origin % step.Value)) % step.Value != 0m)
+                errors.Add(new(field.Key, RecordValidationErrorCodes.InvalidStep, "Value does not match the configured step."));
+        }
         var minimum = GetDecimalSetting(field, "minimum");
         if (minimum is { } min && number < min)
         {
@@ -465,12 +481,12 @@ public sealed class RecordValueValidator
     {
         setting = default;
 
-        if (field.Settings is null || field.Settings.RootElement.ValueKind != JsonValueKind.Object)
+        if (!FieldConfiguration.Properties.ContainsKey(field.FieldType))
         {
             return false;
         }
 
-        foreach (var property in field.Settings.RootElement.EnumerateObject())
+        foreach (var property in FieldConfiguration.Settings(field).EnumerateObject())
         {
             if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
             {

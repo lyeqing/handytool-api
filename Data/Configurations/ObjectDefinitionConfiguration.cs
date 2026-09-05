@@ -13,7 +13,7 @@ public class ObjectDefinitionConfiguration : IEntityTypeConfiguration<ObjectDefi
             t.HasCheckConstraint("CK_ObjectDefinitions_RequiredAccessLevel", "\"RequiredAccessLevel\" BETWEEN 0 AND 3");
             t.HasCheckConstraint("CK_ObjectDefinitions_Visibility", "\"Visibility\" IN (0, 1, 2)");
             t.HasCheckConstraint("CK_ObjectDefinitions_CompanyVisibility",
-                """("Visibility" = 1 AND "CompanyId" IS NOT NULL) OR ("Visibility" IN (0, 2) AND "CompanyId" IS NULL)""");
+                """"Visibility" <> 1 OR "CompanyId" IS NOT NULL""");
         });
         builder.Property(x => x.Visibility).HasConversion<int>().HasDefaultValue(DefinitionVisibility.Private);
         builder.Property(x => x.RequiredAccessLevel).HasDefaultValue(0);

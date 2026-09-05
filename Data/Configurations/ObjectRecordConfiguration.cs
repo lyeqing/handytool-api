@@ -13,7 +13,17 @@ public class ObjectRecordConfiguration : IEntityTypeConfiguration<ObjectRecord>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();
 
-        builder.Property(x => x.CreatedByUserId).IsRequired();
+        builder.Property(x => x.CreatedByUserId).IsRequired(false);
+        builder.Property(x => x.Visibility).HasConversion<int>().HasDefaultValue(RecordVisibility.Private);
+        builder.Property(x => x.AnonymousDeviceHash).HasMaxLength(64);
+        builder.HasIndex(x => new { x.CompanyId, x.CreatedDate });
+        builder.HasIndex(x => new { x.CreatedByUserId, x.CreatedDate });
+        builder.HasIndex(x => x.AnonymousDeviceHash);
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_ObjectRecords_Creator", """("CreatedByUserId" IS NOT NULL AND "AnonymousDeviceHash" IS NULL) OR ("CreatedByUserId" IS NULL AND "AnonymousDeviceHash" IS NOT NULL AND "CompanyId" IS NULL AND "Visibility" = 0)""");
+            t.HasCheckConstraint("CK_ObjectRecords_Visibility", """ "Visibility" IN (0,1) AND ("Visibility" = 0 OR "CompanyId" IS NOT NULL) """);
+        });
 
         builder.Property(x => x.Title)
             .IsRequired(false)

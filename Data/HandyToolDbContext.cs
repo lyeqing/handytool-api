@@ -43,6 +43,8 @@ public class HandyToolDbContext : DbContext
 
     public DbSet<FieldOption> FieldOptions => Set<FieldOption>();
 
+    public DbSet<TrialUsage> TrialUsage => Set<TrialUsage>();
+
     public DbSet<ObjectRecord> ObjectRecords => Set<ObjectRecord>();
 
     // --- Authentication: who someone is, and which devices are currently signed in as them. ---
