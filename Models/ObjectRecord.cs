@@ -14,12 +14,18 @@ public class ObjectRecord
 
     public long ObjectDefinitionId { get; set; }
 
-    /// <summary>Owning account. Resolved from the authenticated session, never from a request body.</summary>
-    public long UserId { get; set; }
+    /// <summary>Original creator. Preserved when company membership changes.</summary>
+    public long CreatedByUserId { get; set; }
 
-    public string Title { get; set; } = string.Empty;
+    /// <summary>Owning company at creation; null for independent users' personal records.</summary>
+    public long? CompanyId { get; set; }
 
-    public string Description { get; set; } = string.Empty;
+    /// <summary>Application-managed concurrency token; increment on each successful update.</summary>
+    public long Revision { get; set; } = 1;
+
+    public string? Title { get; set; }
+
+    public string? Description { get; set; }
 
     /// <summary>
     /// Dynamic field values keyed by <see cref="FieldDefinition.Key"/>.
@@ -33,7 +39,9 @@ public class ObjectRecord
     public DateTime ModifiedDate { get; set; }
 
     // Relationships — not additional database columns
-    public UserAccount User { get; set; } = null!;
+    public UserAccount CreatedByUser { get; set; } = null!;
+
+    public CompanyAccount? Company { get; set; }
 
     public ObjectDefinition ObjectDefinition { get; set; } = null!;
 }

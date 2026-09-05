@@ -8,21 +8,24 @@ public class ObjectRecordConfiguration : IEntityTypeConfiguration<ObjectRecord>
 {
     public void Configure(EntityTypeBuilder<ObjectRecord> builder)
     {
-        builder.ToTable("ObjectRecords");
+        builder.ToTable("ObjectRecords", t => t.HasCheckConstraint("CK_ObjectRecords_Revision", "\"Revision\" >= 1"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();
 
-        builder.Property(x => x.UserId).IsRequired();
+        builder.Property(x => x.CreatedByUserId).IsRequired();
 
         builder.Property(x => x.Title)
-            .IsRequired()
+            .IsRequired(false)
             .HasMaxLength(300);
 
         builder.Property(x => x.Description)
-            .IsRequired()
-            .HasMaxLength(4000)
-            .HasDefaultValue(string.Empty);
+            .IsRequired(false)
+            .HasMaxLength(4000);
+
+        builder.Property(x => x.Revision).HasDefaultValue(1L).ValueGeneratedNever().IsConcurrencyToken();
+        builder.HasOne(x => x.Company).WithMany()
+            .HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(x => x.Values)
             .IsRequired()
@@ -33,12 +36,12 @@ public class ObjectRecordConfiguration : IEntityTypeConfiguration<ObjectRecord>
         builder.Property(x => x.ModifiedDate).IsRequired();
 
         builder.HasIndex(x => x.ObjectDefinitionId);
-        builder.HasIndex(x => x.UserId);
+        builder.HasIndex(x => x.CreatedByUserId);
         builder.HasIndex(x => x.CreatedDate);
 
-        builder.HasOne(x => x.User)
+        builder.HasOne(x => x.CreatedByUser)
             .WithMany()
-            .HasForeignKey(x => x.UserId)
+            .HasForeignKey(x => x.CreatedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(x => x.ObjectDefinition)
