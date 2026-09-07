@@ -60,9 +60,10 @@ public static class FieldConfiguration
         {
             var value = p.GetValue(config);
             if (value is string text && text.Length > 2000) throw new ApiFailure(400,"invalid_settings","Placeholder is too long.");
-            if (value is IConvertible numeric && value is not string && p.Name is not ("ReferencedObjectDefinitionId" or "ItemDefinitionId"))
+            if (value is sbyte or byte or short or ushort or int or uint or long or ulong or float or double or decimal
+                && p.Name is not ("ReferencedObjectDefinitionId" or "ItemDefinitionId"))
             {
-                var n = Convert.ToDecimal(numeric);
+                var n = Convert.ToDecimal(value);
                 if ((p.Name is "Step" or "StepSeconds" or "Rows") && n <= 0 ||
                     (p.Name.EndsWith("Length") || p.Name.EndsWith("Items") || p.Name.EndsWith("Selections")) && n < 0)
                     throw new ApiFailure(400,"invalid_settings",$"Invalid {p.Name}.");

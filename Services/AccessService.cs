@@ -44,6 +44,11 @@ public static class PlanLimits
 }
 public sealed class AccessService(HandyToolDbContext db)
 {
+    // Private definitions belong to the creator even when they inherit a company plan.
+    // Use this same scope for the quota count and lock, so membership cannot bypass either.
+    public static AccessActor DefinitionQuotaActor(AccessActor actor, DefinitionVisibility visibility) =>
+        visibility == DefinitionVisibility.Company ? actor : actor with { CompanyId = null, Seats = 1 };
+
     public async Task<AccessActor> ActorAsync(HttpContext http, CancellationToken ct)
     {
         var id = CurrentUser.GetUserIdOrNull(http);

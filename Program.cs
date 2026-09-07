@@ -113,6 +113,15 @@ try
     builder.Services.AddScoped<TrackingIdentityResolver>();
     builder.Services.AddScoped<AnalyticsTracker>();
 
+    // Access control, plan quotas and the anonymous trial. AccessService, DefinitionLoader and
+    // TrialQuota take the DbContext, so they are scoped with it; TrialIdentity holds only a data
+    // protector and ApiFailureFilter holds no state at all.
+    builder.Services.AddScoped<AccessService>();
+    builder.Services.AddScoped<DefinitionLoader>();
+    builder.Services.AddScoped<TrialQuota>();
+    builder.Services.AddSingleton<TrialIdentity>();
+    builder.Services.AddSingleton<ApiFailureFilter>();
+
     // Unhandled exceptions get logged once, with context, and turned into ProblemDetails.
     builder.Services.AddProblemDetails();
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();

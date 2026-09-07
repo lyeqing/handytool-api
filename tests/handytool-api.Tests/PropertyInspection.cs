@@ -1,5 +1,6 @@
 using System.Text.Json;
 using handytool_api.Models;
+using handytool_api.Services;
 
 namespace handytool_api.Tests;
 
@@ -11,7 +12,7 @@ internal static class PropertyInspection
 {
     public static List<FieldDefinition> Fields() =>
     [
-        Field("propertyAddress", "Property Address", FieldType.Text, isRequired: true,
+        Field("propertyAddress", "Property Address", FieldType.ShortText, isRequired: true,
             settings: """{ "minimumLength": 2, "maximumLength": 200 }"""),
         Field("inspectionDate", "Inspection Date", FieldType.Date, isRequired: true),
         Field("conditionScore", "Condition Score", FieldType.Range, isRequired: true,
@@ -43,17 +44,25 @@ internal static class PropertyInspection
         bool isRequired = false,
         bool isActive = true,
         string settings = "{}",
-        List<FieldOption>? options = null) => new()
+        List<FieldOption>? options = null)
     {
-        ObjectDefinitionId = 12,
-        Key = key,
-        Name = name,
-        FieldType = fieldType,
-        IsRequired = isRequired,
-        IsActive = isActive,
-        Settings = JsonDocument.Parse(settings),
-        Options = options ?? []
-    };
+        var field = new FieldDefinition
+        {
+            ObjectDefinitionId = 12,
+            Key = key,
+            Name = name,
+            FieldType = fieldType,
+            IsRequired = isRequired,
+            IsActive = isActive,
+            Options = options ?? []
+        };
+
+        // Settings are relational now: Apply parses the JSON and attaches the one typed
+        // configuration row this field type uses, exactly as the create endpoint does.
+        FieldConfiguration.Apply(field, Json(settings));
+
+        return field;
+    }
 
     public static FieldOption Option(string value, string label, bool isActive = true) => new()
     {

@@ -297,7 +297,7 @@ public class RecordValueValidatorTests
     {
         var fields = new List<FieldDefinition>
         {
-            Field("notes", "Notes", FieldType.Text, settings: """{ "minimumLength": 5, "maximumLength": 10 }""")
+            Field("notes", "Notes", FieldType.ShortText, settings: """{ "minimumLength": 5, "maximumLength": 10 }""")
         };
 
         AssertSingleError(
