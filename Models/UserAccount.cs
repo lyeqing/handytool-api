@@ -31,6 +31,8 @@ public class UserAccount
 
     public string DisplayName { get; set; } = string.Empty;
 
+    public string? Phone { get; set; }
+
     /// <summary>
     /// BCP-47 tag, or null to follow whatever the browser asks for. Stored on the account rather than
     /// only in a cookie so the choice follows the person to another device.

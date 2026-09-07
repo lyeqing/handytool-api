@@ -4,6 +4,11 @@ namespace handytool_api.Contracts;
 
 // ---------- Requests ----------
 
+public enum RegistrationAccountKind { Personal, Company }
+
+public sealed record CompanyRegistrationRequest(string Name, string? Country = null,
+    string? Address = null, string? WebsiteUrl = null);
+
 /// <summary>
 /// <paramref name="DeviceName"/> and <paramref name="ClientType"/> only label the session in the
 /// user's device list. They carry no authority: nothing is trusted from them.
@@ -13,7 +18,10 @@ public sealed record RegisterRequest(
     string Password,
     string? DisplayName = null,
     string? DeviceName = null,
-    ClientType ClientType = ClientType.Web);
+    ClientType ClientType = ClientType.Web,
+    string? Phone = null,
+    RegistrationAccountKind AccountKind = RegistrationAccountKind.Personal,
+    CompanyRegistrationRequest? Company = null);
 
 public sealed record LoginRequest(
     string Email,
@@ -38,14 +46,20 @@ public sealed record UserResponse(
     string DisplayName,
     // Null means "follow the browser" rather than "English".
     string? PreferredLanguage,
-    DateTime CreatedDate)
+    DateTime CreatedDate,
+    string? Phone = null,
+    long? CompanyId = null,
+    CompanyRole? CompanyRole = null)
 {
     public static UserResponse From(UserAccount user) => new(
         user.Id,
         user.Email,
         user.DisplayName,
         user.PreferredLanguage,
-        user.CreatedDate);
+        user.CreatedDate,
+        user.Phone,
+        user.CompanyId,
+        user.CompanyRole);
 }
 
 /// <summary>

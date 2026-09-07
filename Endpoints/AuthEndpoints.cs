@@ -118,17 +118,15 @@ public static class AuthEndpoints
         var logger = loggerFactory.CreateLogger(LogCategory);
 
         var outcome = await authService.RegisterAsync(
-            request.Email,
-            request.Password,
-            request.DisplayName,
-            request.ClientType,
-            request.DeviceName,
+            request,
             httpContext.Request.Headers.UserAgent.ToString(),
             cancellationToken);
 
         if (!outcome.Succeeded)
         {
             logger.LogInformation("Rejected registration: {Failure}", outcome.Failure);
+            if (outcome.Errors is { Count: > 0 })
+                return ApiResults.ValidationFailed("Please check your registration details.", outcome.Errors.ToArray());
             return Rejected(outcome, httpContext);
         }
 

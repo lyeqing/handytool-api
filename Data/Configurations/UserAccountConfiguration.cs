@@ -43,6 +43,7 @@ public class UserAccountConfiguration : IEntityTypeConfiguration<UserAccount>
             .HasDefaultValue(string.Empty);
 
         builder.Property(x => x.PreferredLanguage).HasMaxLength(10);
+        builder.Property(x => x.Phone).HasMaxLength(40);
 
         builder.Property(x => x.IsActive)
             .IsRequired()

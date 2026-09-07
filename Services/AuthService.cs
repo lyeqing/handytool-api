@@ -1,8 +1,10 @@
 using handytool_api.Configuration;
+using handytool_api.Contracts;
 using handytool_api.Data;
 using handytool_api.Logging;
 using handytool_api.Models;
 using handytool_api.Security;
+using handytool_api.Validation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -16,6 +18,7 @@ public enum AuthFailure
     EmailAlreadyRegistered,
     WeakPassword,
     InvalidEmail,
+    InvalidRegistration,
 
     /// <summary>Too many recent failures on this address or this account. Temporary, always.</summary>
     TooManyAttempts
@@ -31,7 +34,8 @@ public sealed record AuthOutcome(
     UserSession? Session = null,
     string? Token = null,
     // How long until the caller may try again. Only meaningful for TooManyAttempts.
-    TimeSpan RetryAfter = default)
+    TimeSpan RetryAfter = default,
+    IReadOnlyList<RecordValidationError>? Errors = null)
 {
     public bool Succeeded => Failure == AuthFailure.None;
 
@@ -75,25 +79,17 @@ public sealed class AuthService
     }
 
     public async Task<AuthOutcome> RegisterAsync(
-        string email,
-        string password,
-        string? displayName,
-        ClientType clientType,
-        string? deviceName,
+        RegisterRequest request,
         string? userAgent,
         CancellationToken cancellationToken)
     {
-        var normalisedEmail = NormaliseEmail(email);
+        var errors = ValidateRegistration(request, _options.MinimumPasswordLength);
+        if (errors.Count > 0) return new(AuthFailure.InvalidRegistration, Errors: errors);
 
-        if (!LooksLikeEmail(normalisedEmail))
-        {
-            return AuthOutcome.Fail(AuthFailure.InvalidEmail);
-        }
-
-        if (password is null || password.Length < _options.MinimumPasswordLength)
-        {
-            return AuthOutcome.Fail(AuthFailure.WeakPassword);
-        }
+        var normalisedEmail = NormaliseEmail(request.Email);
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        // Serialize registrations for the same normalized email before checking uniqueness.
+        await new AccessService(_db).LockKeyAsync($"register:{normalisedEmail}", cancellationToken);
 
         if (await _db.UserAccounts.AnyAsync(u => u.Email == normalisedEmail, cancellationToken))
         {
@@ -101,26 +97,80 @@ public sealed class AuthService
         }
 
         var now = DateTime.UtcNow;
-        var (hash, salt) = PasswordHasher.Hash(password);
+        var (hash, salt) = PasswordHasher.Hash(request.Password);
 
         var user = new UserAccount
         {
             Email = normalisedEmail,
             PasswordHash = hash,
             PasswordSalt = salt,
-            DisplayName = string.IsNullOrWhiteSpace(displayName) ? normalisedEmail : displayName.Trim(),
+            DisplayName = request.DisplayName!.Trim(),
+            Phone = Optional(request.Phone),
+            AccountTypeId = AccountType.FreeId,
+            IsSuperAdmin = false,
             IsActive = true,
             CreatedDate = now,
             ModifiedDate = now
         };
 
+        if (request.AccountKind == RegistrationAccountKind.Company)
+        {
+            var company = request.Company!;
+            user.Company = new CompanyAccount
+            {
+                Name = company.Name.Trim(), Country = Optional(company.Country),
+                Address = Optional(company.Address), WebsiteUrl = Optional(company.WebsiteUrl),
+                AccountTypeId = AccountType.FreeId, SeatLimit = 1, IsActive = true,
+                CreatedDate = now, ModifiedDate = now
+            };
+            // Owner is an application role. Company users inherit the company's Free plan.
+            user.CompanyRole = CompanyRole.Owner;
+            user.AccountTypeId = null;
+        }
+
         _db.UserAccounts.Add(user);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var (session, token) = await StartSessionAsync(user, clientType, deviceName, userAgent, now, cancellationToken);
+        var (session, token) = await StartSessionAsync(user, request.ClientType, request.DeviceName, userAgent, now, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return new AuthOutcome(AuthFailure.None, user, session, token);
     }
+
+    public static List<RecordValidationError> ValidateRegistration(RegisterRequest request, int minimumPasswordLength)
+    {
+        var errors = new List<RecordValidationError>();
+        void Text(string field, string? value, int max, bool required = false)
+        {
+            if (required && string.IsNullOrWhiteSpace(value)) errors.Add(new(field, "required", "This field is required."));
+            else if (value?.Trim().Length > max) errors.Add(new(field, "too_long", $"Use at most {max} characters."));
+        }
+        Text("displayName", request.DisplayName, 200, required: true);
+        Text("phone", request.Phone, 40);
+        if (!LooksLikeEmail(NormaliseEmail(request.Email))) errors.Add(new("email", "invalid_format", "Enter a valid email address."));
+        if (string.IsNullOrEmpty(request.Password) || request.Password.Length < minimumPasswordLength)
+            errors.Add(new("password", "too_short", $"Use at least {minimumPasswordLength} characters."));
+        else if (request.Password.Length > 1024) errors.Add(new("password", "too_long", "Use at most 1024 characters."));
+        if (!Enum.IsDefined(request.AccountKind)) errors.Add(new("accountKind", "invalid_type", "Choose Personal or Company."));
+        if (!Enum.IsDefined(request.ClientType)) errors.Add(new("clientType", "invalid_type", "Unknown client type."));
+        if (request.AccountKind == RegistrationAccountKind.Company)
+        {
+            Text("company.name", request.Company?.Name, 200, required: true);
+            Text("company.country", request.Company?.Country, 100);
+            Text("company.address", request.Company?.Address, 2000);
+            Text("company.websiteUrl", request.Company?.WebsiteUrl, 2048);
+            if (Optional(request.Company?.WebsiteUrl) is { } website &&
+                (!Uri.TryCreate(website, UriKind.Absolute, out var uri) ||
+                 (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) ||
+                 string.IsNullOrEmpty(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo)))
+                errors.Add(new("company.websiteUrl", "invalid_format", "Enter an http:// or https:// website URL."));
+        }
+        else if (request.Company is not null)
+            errors.Add(new("company", "invalid_type", "Company details require a company account."));
+        return errors;
+    }
+
+    private static string? Optional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     public async Task<AuthOutcome> LoginAsync(
         string email,

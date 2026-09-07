@@ -7,6 +7,10 @@ public class CompanyAccount
 
     public string Name { get; set; } = string.Empty;
 
+    public string? Country { get; set; }
+    public string? Address { get; set; }
+    public string? WebsiteUrl { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime? ExpiresAt { get; set; }

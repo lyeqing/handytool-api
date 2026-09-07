@@ -3,6 +3,7 @@ using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using handytool_api.Data;
@@ -12,9 +13,11 @@ using handytool_api.Data;
 namespace handytool_api.Data.Migrations
 {
     [DbContext(typeof(HandyToolDbContext))]
-    partial class HandyToolDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260907114056_SyncRecordAndTrialSchema")]
+    partial class SyncRecordAndTrialSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -255,14 +258,6 @@ namespace handytool_api.Data.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(1);
 
-                    b.Property<string>("Address")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)");
-
-                    b.Property<string>("Country")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -285,10 +280,6 @@ namespace handytool_api.Data.Migrations
                     b.Property<int>("SeatLimit")
                         .HasColumnType("integer")
                         .HasDefaultValue(1);
-
-                    b.Property<string>("WebsiteUrl")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
 
                     b.HasKey("Id");
 
@@ -1188,10 +1179,6 @@ namespace handytool_api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
 
                     b.Property<string>("PreferredLanguage")
                         .HasMaxLength(10)
