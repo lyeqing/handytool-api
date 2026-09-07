@@ -118,6 +118,7 @@ try
     // protector and ApiFailureFilter holds no state at all.
     builder.Services.AddScoped<AccessService>();
     builder.Services.AddScoped<HomeService>();
+    builder.Services.AddScoped<AdminService>();
     builder.Services.AddScoped<DefinitionLoader>();
     builder.Services.AddScoped<TrialQuota>();
     builder.Services.AddSingleton<TrialIdentity>();
@@ -227,6 +228,7 @@ try
     app.MapObjectDefinitionEndpoints();
     app.MapObjectRecordEndpoints();
     app.MapCategoryEndpoints();
+    app.MapAdminEndpoints();
 
     app.Run();
 }

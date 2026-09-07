@@ -9,6 +9,7 @@ public class SubcategoryConfiguration : IEntityTypeConfiguration<Subcategory>
     public void Configure(EntityTypeBuilder<Subcategory> builder)
     {
         builder.ToTable("Subcategories");
+        builder.Property(x => x.DisplayOrder).HasDefaultValue(0);
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).UseIdentityByDefaultColumn();
         builder.Property(x => x.Name).IsRequired().HasMaxLength(200);

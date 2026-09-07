@@ -13,13 +13,13 @@ public sealed class HomeService(HandyToolDbContext db, AccessService access)
         var categories = await db.MasterCategories.AsNoTracking()
             .Where(c => c.IsActive && visible.Any(d => d.MasterCategoryId == c.Id))
             .Include(c => c.Translations).Include(c => c.Subcategories).ThenInclude(s => s.Translations)
-            .OrderBy(c => c.Name).ThenBy(c => c.Id).ToListAsync(ct);
+            .OrderBy(c => c.DisplayOrder).ThenBy(c => c.Name).ThenBy(c => c.Id).ToListAsync(ct);
         var subcategoryIds = await visible.Where(d => d.SubcategoryId != null)
             .Select(d => d.SubcategoryId!.Value).Distinct().ToListAsync(ct);
         return categories.Select(c => new CategoryResponse(c.Id,
             c.Translations.FirstOrDefault(t => t.LanguageCode == language)?.Name ?? c.Name,
             c.Translations.FirstOrDefault(t => t.LanguageCode == language)?.Description ?? c.Description,
-            c.Subcategories.Where(s => s.IsActive && subcategoryIds.Contains(s.Id)).OrderBy(s => s.Name).ThenBy(s => s.Id)
+            c.Subcategories.Where(s => s.IsActive && subcategoryIds.Contains(s.Id)).OrderBy(s => s.DisplayOrder).ThenBy(s => s.Name).ThenBy(s => s.Id)
                 .Select(s => new SubcategoryResponse(s.Id,
                     s.Translations.FirstOrDefault(t => t.LanguageCode == language)?.Name ?? s.Name,
                     s.Translations.FirstOrDefault(t => t.LanguageCode == language)?.Description ?? s.Description)).ToList())).ToList();

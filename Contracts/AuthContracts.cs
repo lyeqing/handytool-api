@@ -49,7 +49,7 @@ public sealed record UserResponse(
     DateTime CreatedDate,
     string? Phone = null,
     long? CompanyId = null,
-    CompanyRole? CompanyRole = null)
+    CompanyRole? CompanyRole = null, bool IsSuperAdmin = false)
 {
     public static UserResponse From(UserAccount user) => new(
         user.Id,
@@ -59,7 +59,7 @@ public sealed record UserResponse(
         user.CreatedDate,
         user.Phone,
         user.CompanyId,
-        user.CompanyRole);
+        user.CompanyRole, user.IsSuperAdmin);
 }
 
 /// <summary>
