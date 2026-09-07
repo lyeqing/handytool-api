@@ -69,13 +69,17 @@ public static partial class ObjectDefinitionEndpoints
         HttpContext httpContext,
         AccessService access,
         IOptions<LocalizationOptions> localization,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        long? categoryId = null,
+        long? subcategoryId = null)
     {
         var actor = await access.ActorAsync(httpContext, cancellationToken);
         var language = RequestLanguage.Resolve(httpContext, localization.Value);
 
         var definitions = await access.Definitions(actor)
             .AsNoTracking()
+            .Where(d => categoryId == null || d.MasterCategoryId == categoryId)
+            .Where(d => subcategoryId == null || d.SubcategoryId == subcategoryId)
             .Include(d => d.Translations)
             .OrderBy(d => d.Name)
             .ThenBy(d => d.Id)

@@ -117,6 +117,7 @@ try
     // TrialQuota take the DbContext, so they are scoped with it; TrialIdentity holds only a data
     // protector and ApiFailureFilter holds no state at all.
     builder.Services.AddScoped<AccessService>();
+    builder.Services.AddScoped<HomeService>();
     builder.Services.AddScoped<DefinitionLoader>();
     builder.Services.AddScoped<TrialQuota>();
     builder.Services.AddSingleton<TrialIdentity>();
@@ -135,6 +136,14 @@ try
     });
 
     var app = builder.Build();
+
+    if (app.Configuration.GetValue<bool>("DevelopmentSeed:Enabled"))
+    {
+        if (!app.Environment.IsDevelopment()) throw new InvalidOperationException("Demo seeding requires Development.");
+        await using var scope = app.Services.CreateAsyncScope();
+        await DevelopmentSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<HandyToolDbContext>(), app.Configuration);
+        return;
+    }
 
     // First in the pipeline: everything downstream that cares who is calling - rate limiting, the
     // security log, the brute-force counters - reads Connection.RemoteIpAddress, and it has to be the
@@ -217,6 +226,7 @@ try
     app.MapAnalyticsEndpoints();
     app.MapObjectDefinitionEndpoints();
     app.MapObjectRecordEndpoints();
+    app.MapCategoryEndpoints();
 
     app.Run();
 }
