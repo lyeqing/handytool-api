@@ -23,8 +23,18 @@ public sealed record CreateObjectDefinitionRequest(string Name, string? Descript
     DefinitionVisibility Visibility = DefinitionVisibility.Private, int RequiredAccessLevel = 0);
 public sealed record UpdateDefinitionRequest(string Name, string? Description, DefinitionVisibility Visibility,
     int RequiredAccessLevel = 0, bool IsActive = true);
-public sealed record SaveObjectRecordRequest(string? Title = null, JsonElement Values = default,
-    string? Description = null, long? Revision = null, RecordVisibility Visibility = RecordVisibility.Private);
+public sealed record SaveObjectRecordRequest
+{
+    public string? Title { get; init; }
+
+    // A property keeps omitted values Undefined without a constructor default that the
+    // OpenAPI JSON schema exporter attempts to serialize as a JsonElement.
+    public JsonElement Values { get; init; }
+
+    public string? Description { get; init; }
+    public long? Revision { get; init; }
+    public RecordVisibility Visibility { get; init; } = RecordVisibility.Private;
+}
 
 public sealed record FieldOptionResponse(long Id, string Value, string Label, int DisplayOrder, bool IsActive,
     IReadOnlyDictionary<string,string>? LabelTranslations = null)

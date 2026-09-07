@@ -56,7 +56,7 @@ public sealed class HandyToolSchemaTransformer : IOpenApiSchemaTransformer
                     {
                       "key": "propertyAddress",
                       "name": "Property Address",
-                      "fieldType": "Text",
+                      "fieldType": "ShortText",
                       "isRequired": true,
                       "displayOrder": 1,
                       "settings": { "minimumLength": 2, "maximumLength": 200 }
