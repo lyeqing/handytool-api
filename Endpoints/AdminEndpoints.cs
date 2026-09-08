@@ -32,7 +32,7 @@ public static class AdminEndpoints
         });
         group.MapGet("/users",async (AdminService s,CancellationToken ct,string? q=null,int skip=0) => Results.Ok(await s.Users(q,skip,ct)));
         group.MapGet("/companies",async (AdminService s,CancellationToken ct,string? q=null,int skip=0) => Results.Ok(await s.Companies(q,skip,ct)));
-        group.MapGet("/categories",async (AdminService s,CancellationToken ct,bool sub=false,string? q=null,int skip=0) => Results.Ok(await s.Categories(sub,q,skip,ct)));
+        group.MapGet("/categories",async (AdminService s,CancellationToken ct,bool sub=false,string? q=null,int skip=0,long? masterCategoryId=null) => Results.Ok(await s.Categories(sub,q,skip,ct,masterCategoryId)));
         group.MapGet("/plans",async (HandyToolDbContext db,CancellationToken ct) => Results.Ok(await db.AccountTypes.AsNoTracking().OrderBy(x=>x.Id).ToListAsync(ct)));
         group.MapPut("/users/{id:long}",async (long id,AdminUserEdit input,AdminService s,CancellationToken ct) => { await s.UpdateUser(id,input,ct); return Results.NoContent(); });
         group.MapPut("/companies/{id:long}",async (long id,AdminCompanyEdit input,AdminService s,CancellationToken ct) => { await s.UpdateCompany(id,input,ct); return Results.NoContent(); });

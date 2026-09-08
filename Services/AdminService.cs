@@ -50,14 +50,19 @@ public sealed class AdminService(HandyToolDbContext db, AccessService access, IL
             .Select(c => new AdminCompanyRow(c.Id,c.Name,c.Country,c.Address,c.WebsiteUrl,c.AccountTypeId,c.SeatLimit,c.ExpiresAt,c.IsActive,c.ModifiedDate)).ToListAsync(ct),
             total = await query.CountAsync(ct) };
     }
-    public async Task<object> Categories(bool sub, string? q, int skip, CancellationToken ct)
+    public async Task<object> Categories(bool sub, string? q, int skip, CancellationToken ct, long? masterCategoryId = null)
     {
         q = Text(q,200);
         if (sub)
         {
-            var query = db.Subcategories.AsNoTracking().Where(c => q == null || c.Name.Contains(q));
+            if (masterCategoryId is null) Invalid("Select a master category first.");
+            var parent = await db.MasterCategories.AsNoTracking().Where(c => c.Id == masterCategoryId)
+                .Select(c => new { c.Id, c.Name }).SingleOrDefaultAsync(ct)
+                ?? throw new ApiFailure(404, "not_found", "Master category not found.");
+            var query = db.Subcategories.AsNoTracking()
+                .Where(c => c.MasterCategoryId == masterCategoryId && (q == null || c.Name.Contains(q)));
             var rows = await query.Include(c => c.Translations).OrderBy(c => c.DisplayOrder).ThenBy(c => c.Id).Skip(Math.Max(0,skip)).Take(25).ToListAsync(ct);
-            return new { items = rows.Select(c => new AdminCategoryRow(c.Id,c.Name,c.Description,c.IsActive,c.DisplayOrder,c.MasterCategoryId,
+            return new { parent, items = rows.Select(c => new AdminCategoryRow(c.Id,c.Name,c.Description,c.IsActive,c.DisplayOrder,c.MasterCategoryId,
                 c.Translations.Select(t => new AdminTranslation(t.LanguageCode,t.Name,t.Description)).ToList(),c.ModifiedDate)), total = await query.CountAsync(ct) };
         }
         else

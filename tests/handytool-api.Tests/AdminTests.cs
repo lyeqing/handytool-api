@@ -81,6 +81,22 @@ public class AdminTests
         Assert.Equal(other.Id,definition.MasterCategoryId);
         Assert.Equal(sub.Id,definition.SubcategoryId);
         Assert.Equal("测试分类",(await db.SubcategoryTranslations.SingleAsync(x=>x.SubcategoryId==sub.Id)).Name);
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var originalList = System.Text.Json.JsonSerializer.SerializeToElement(
+            await service.Categories(true, null, 0, default, master.Id), jsonOptions);
+        Assert.Equal(0, originalList.GetProperty("total").GetInt32());
+        var movedList = System.Text.Json.JsonSerializer.SerializeToElement(
+            await service.Categories(true, null, 0, default, other.Id), jsonOptions);
+        Assert.Equal(1, movedList.GetProperty("total").GetInt32());
+        Assert.Equal(other.Id, movedList.GetProperty("parent").GetProperty("id").GetInt64());
+        Assert.Equal(sub.Id, movedList.GetProperty("items")[0].GetProperty("id").GetInt64());
+        var filteredList = System.Text.Json.JsonSerializer.SerializeToElement(
+            await service.Categories(true, "no-match-"+suffix, 0, default, other.Id), jsonOptions);
+        Assert.Equal(0, filteredList.GetProperty("total").GetInt32());
+        Assert.Equal(400, (await Assert.ThrowsAsync<ApiFailure>(
+            () => service.Categories(true, null, 0, default))).Status);
+        Assert.Equal(404, (await Assert.ThrowsAsync<ApiFailure>(
+            () => service.Categories(true, null, 0, default, long.MinValue))).Status);
         await transaction.RollbackAsync();
     }
 }
