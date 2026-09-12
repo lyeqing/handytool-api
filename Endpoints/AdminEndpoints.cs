@@ -30,12 +30,14 @@ public static class AdminEndpoints
             await transaction.CommitAsync(http.RequestAborted);
             return result;
         });
-        group.MapGet("/users",async (AdminService s,CancellationToken ct,string? q=null,int skip=0) => Results.Ok(await s.Users(q,skip,ct)));
-        group.MapGet("/companies",async (AdminService s,CancellationToken ct,string? q=null,int skip=0) => Results.Ok(await s.Companies(q,skip,ct)));
+        group.MapGet("/users",async (AdminService s,CancellationToken ct,string? q=null,int skip=0,long? companyId=null,bool personalOnly=false,string sort="name") => Results.Ok(await s.Users(q,skip,ct,companyId,personalOnly,sort)));
+        group.MapGet("/companies",async (AdminService s,CancellationToken ct,string? q=null,int skip=0,long? companyId=null) => Results.Ok(await s.Companies(q,skip,ct,companyId)));
         group.MapGet("/categories",async (AdminService s,CancellationToken ct,bool sub=false,string? q=null,int skip=0,long? masterCategoryId=null) => Results.Ok(await s.Categories(sub,q,skip,ct,masterCategoryId)));
+        group.MapGet("/company-options",async (HandyToolDbContext db,CancellationToken ct) => Results.Ok(await db.CompanyAccounts.AsNoTracking().OrderBy(c=>c.Name).ThenBy(c=>c.Id).Select(c=>new { c.Id,c.Name }).ToListAsync(ct)));
         group.MapGet("/plans",async (HandyToolDbContext db,CancellationToken ct) => Results.Ok(await db.AccountTypes.AsNoTracking().OrderBy(x=>x.Id).ToListAsync(ct)));
         group.MapPut("/users/{id:long}",async (long id,AdminUserEdit input,AdminService s,CancellationToken ct) => { await s.UpdateUser(id,input,ct); return Results.NoContent(); });
         group.MapPut("/companies/{id:long}",async (long id,AdminCompanyEdit input,AdminService s,CancellationToken ct) => { await s.UpdateCompany(id,input,ct); return Results.NoContent(); });
+        group.MapDelete("/categories/{id:long}",async (long id,DateTime modifiedDate,AdminService s,CancellationToken ct,bool sub=false) => { await s.DeleteCategory(id,sub,modifiedDate,ct); return Results.NoContent(); });
         group.MapPost("/categories",async (AdminCategoryEdit input,AdminService s,CancellationToken ct,bool sub=false) => { await s.SaveCategory(null,sub,input,ct); return Results.NoContent(); });
         group.MapPut("/categories/{id:long}",async (long id,AdminCategoryEdit input,AdminService s,CancellationToken ct,bool sub=false) => { await s.SaveCategory(id,sub,input,ct); return Results.NoContent(); });
     }

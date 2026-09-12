@@ -194,6 +194,7 @@ public sealed class AuthService
         }
 
         var user = await _db.UserAccounts
+            .Include(u => u.Company)
             .FirstOrDefaultAsync(u => u.Email == normalisedEmail, cancellationToken);
 
         // Hash something either way, so "no such account" and "wrong password" take the same time.
@@ -277,7 +278,7 @@ public sealed class AuthService
     }
 
     public Task<UserAccount?> FindUserAsync(long userId, CancellationToken cancellationToken) =>
-        _db.UserAccounts.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        _db.UserAccounts.AsNoTracking().Include(u => u.Company).FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
     /// <summary>
     /// Partial update of an account. Nulls mean "leave alone", which is why clearing the language
@@ -290,7 +291,7 @@ public sealed class AuthService
         string? preferredLanguage,
         CancellationToken cancellationToken)
     {
-        var user = await _db.UserAccounts.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await _db.UserAccounts.Include(u => u.Company).FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         if (user is null)
         {

@@ -32,19 +32,31 @@ public sealed class AdminService(HandyToolDbContext db, AccessService access, IL
     {
         if (id is null || !await db.AccountTypes.AnyAsync(x => x.Id == id, ct)) Invalid("Choose an existing account plan.");
     }
-    public async Task<object> Users(string? q, int skip, CancellationToken ct)
+    public async Task<object> Users(string? q, int skip, CancellationToken ct, long? companyId = null, bool personalOnly = false, string sort = "name")
     {
         q = Text(q, 200);
+        if (companyId is not null && personalOnly) Invalid("Choose either a company or personal users.");
         var query = db.UserAccounts.AsNoTracking();
+        if (companyId is not null) query = query.Where(u => u.CompanyId == companyId);
+        if (personalOnly) query = query.Where(u => u.CompanyId == null);
         if (q is not null) query = query.Where(u => u.Email.Contains(q) || u.DisplayName.Contains(q));
-        return new { items = await query.OrderBy(u => u.Id).Skip(Math.Max(0, skip)).Take(25)
-            .Select(u => new AdminUserRow(u.Id,u.DisplayName,u.Email,u.Phone,u.PreferredLanguage,u.CompanyId,u.CompanyRole,u.AccountTypeId,u.IsActive,u.IsSuperAdmin,u.ModifiedDate)).ToListAsync(ct),
+        var ordered = sort switch {
+            "name" => query.OrderBy(u => u.DisplayName).ThenBy(u => u.Id),
+            "name-desc" => query.OrderByDescending(u => u.DisplayName).ThenBy(u => u.Id),
+            "owners" => query.OrderByDescending(u => u.CompanyRole == CompanyRole.Owner).ThenBy(u => u.DisplayName).ThenBy(u => u.Id),
+            "admins" => query.OrderByDescending(u => u.CompanyRole == CompanyRole.Admin).ThenBy(u => u.DisplayName).ThenBy(u => u.Id),
+            "newest" => query.OrderByDescending(u => u.CreatedDate).ThenByDescending(u => u.Id),
+            _ => throw new ApiFailure(400, "invalid_sort", "Choose a supported user sort.")
+        };
+        return new { items = await ordered.Skip(Math.Max(0, skip)).Take(25)
+            .Select(u => new AdminUserRow(u.Id,u.DisplayName,u.Email,u.Phone,u.PreferredLanguage,u.CompanyId,u.CompanyRole,u.AccountTypeId,u.IsActive,u.IsSuperAdmin,u.ModifiedDate,u.Company == null ? null : u.Company.Name)).ToListAsync(ct),
             total = await query.CountAsync(ct) };
     }
-    public async Task<object> Companies(string? q, int skip, CancellationToken ct)
+    public async Task<object> Companies(string? q, int skip, CancellationToken ct, long? companyId = null)
     {
         q = Text(q, 200);
         var query = db.CompanyAccounts.AsNoTracking();
+        if (companyId is not null) query = query.Where(c => c.Id == companyId);
         if (q is not null) query = query.Where(c => c.Name.Contains(q));
         return new { items = await query.OrderBy(c => c.Id).Skip(Math.Max(0,skip)).Take(25)
             .Select(c => new AdminCompanyRow(c.Id,c.Name,c.Country,c.Address,c.WebsiteUrl,c.AccountTypeId,c.SeatLimit,c.ExpiresAt,c.IsActive,c.ModifiedDate)).ToListAsync(ct),
@@ -126,6 +138,47 @@ public sealed class AdminService(HandyToolDbContext db, AccessService access, IL
         c.AccountTypeId=input.AccountTypeId; c.SeatLimit=input.SeatLimit; c.ExpiresAt=input.ExpiresAt?.ToUniversalTime(); c.IsActive=input.IsActive; c.ModifiedDate=DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         log.LogInformation("Admin updated company {TargetId}",id);
+    }
+    public async Task DeleteCategory(long id, bool sub, DateTime modifiedDate, CancellationToken ct)
+    {
+        // The admin endpoint wraps reassignment and deletion in one transaction.
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Category deletion requires a transaction.");
+        if (!sub && id == MasterCategory.UncategorizedId)
+            throw new ApiFailure(400, "protected_category", "Uncategorized cannot be deleted.");
+
+        // Lock category rows before moving tools so concurrent tool creation cannot add new references.
+        if (sub)
+        {
+            var rows = await db.Subcategories.FromSqlInterpolated(
+                $"SELECT * FROM \"Subcategories\" WHERE \"Id\" = {id} FOR UPDATE").AsNoTracking().ToListAsync(ct);
+            var category = rows.SingleOrDefault() ?? throw new ApiFailure(404, "not_found", "Category not found.");
+            Revision(modifiedDate, category.ModifiedDate);
+        }
+        else
+        {
+            var rows = await db.MasterCategories.FromSqlInterpolated(
+                $"SELECT * FROM \"MasterCategories\" WHERE \"Id\" = {id} FOR UPDATE").AsNoTracking().ToListAsync(ct);
+            var category = rows.SingleOrDefault() ?? throw new ApiFailure(404, "not_found", "Category not found.");
+            Revision(modifiedDate, category.ModifiedDate);
+            await db.Subcategories.FromSqlInterpolated(
+                $"SELECT * FROM \"Subcategories\" WHERE \"MasterCategoryId\" = {id} ORDER BY \"Id\" FOR UPDATE")
+                .AsNoTracking().ToListAsync(ct);
+        }
+
+        var tools = db.ObjectDefinitions.Where(d => sub ? d.SubcategoryId == id : d.MasterCategoryId == id);
+        await tools.ExecuteUpdateAsync(s => s
+            .SetProperty(d => d.MasterCategoryId, MasterCategory.UncategorizedId)
+            .SetProperty(d => d.SubcategoryId, (long?)null)
+            .SetProperty(d => d.ModifiedDate, DateTime.UtcNow), ct);
+        if (sub)
+            await db.Subcategories.Where(c => c.Id == id).ExecuteDeleteAsync(ct);
+        else
+        {
+            await db.Subcategories.Where(c => c.MasterCategoryId == id).ExecuteDeleteAsync(ct);
+            await db.MasterCategories.Where(c => c.Id == id).ExecuteDeleteAsync(ct);
+        }
+        log.LogInformation("Admin deleted category {TargetId} subcategory {IsSubcategory}; tools moved to Uncategorized", id, sub);
     }
     public async Task SaveCategory(long? id, bool sub, AdminCategoryEdit input, CancellationToken ct)
     {
