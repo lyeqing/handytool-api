@@ -63,6 +63,8 @@ public static partial class ObjectDefinitionEndpoints
             .Produces<ValidationErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ValidationErrorResponse>(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status403Forbidden);
+        group.MapPut("/{id:long}", UpdateAsync).WithName("UpdateObjectDefinition");
+        group.MapGet("/{id:long}/edit", GetEditorAsync).WithName("GetObjectDefinitionEditor");
     }
 
     private static async Task<IResult> ListAsync(
@@ -168,6 +170,7 @@ public static partial class ObjectDefinitionEndpoints
         await ValidateCategoryAsync(db, request, cancellationToken);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await DefinitionUpdateService.LockAsync(db, false, cancellationToken);
 
         // Lock before counting, so two concurrent creates cannot both pass the quota check.
         var quotaActor = AccessService.DefinitionQuotaActor(actor, request.Visibility);
@@ -273,7 +276,7 @@ public static partial class ObjectDefinitionEndpoints
             Description = request.Description?.Trim(),
             FieldType = request.FieldType,
             IsRequired = request.IsRequired,
-            IsActive = true,
+            IsActive = request.IsActive,
             DisplayOrder = request.DisplayOrder,
             CreatedDate = now,
             ModifiedDate = now
@@ -304,7 +307,6 @@ public static partial class ObjectDefinitionEndpoints
                 // A standalone definition: ObjectDefinitionId stays null, so it belongs to no object
                 // type and is reached only through this collection.
                 var item = await BuildFieldAsync(request.Item, db, access, actor, options, now, depth + 1, cancellationToken);
-                db.FieldDefinitions.Add(item);
                 collection.ItemDefinition = item;
                 break;
             }
@@ -339,7 +341,7 @@ public static partial class ObjectDefinitionEndpoints
                 Value = optionRequest.Value.Trim(),
                 Label = optionRequest.Label.Trim(),
                 DisplayOrder = optionRequest.DisplayOrder,
-                IsActive = true,
+                IsActive = optionRequest.IsActive,
                 CreatedDate = now,
                 ModifiedDate = now
             };

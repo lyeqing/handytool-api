@@ -43,7 +43,7 @@ public static class ObjectRecordEndpoints
     {
         var a=await access.ActorAsync(http,ct);
         var r=await access.Records(a,a.UserId==null?trial.Get(http):null).AsNoTracking().SingleOrDefaultAsync(x=>x.Id==id,ct);
-        return r==null?Results.NotFound():Results.Ok(ObjectRecordResponse.From(r));
+        return r==null?Results.NotFound():Results.Ok(ObjectRecordResponse.From(r) with { CanEdit = AccessService.CanWriteRecord(a, r, a.UserId == null ? trial.Get(http) : null) });
     }
     private static JsonElement Values(SaveObjectRecordRequest request) =>
         request.Values.ValueKind==JsonValueKind.Undefined?JsonSerializer.SerializeToElement(new {}):request.Values;
@@ -60,6 +60,7 @@ public static class ObjectRecordEndpoints
         var a=await access.ActorAsync(http,ct);
         ValidateEnvelope(request,a);
         await using var tx=await db.Database.BeginTransactionAsync(ct);
+        await DefinitionUpdateService.LockAsync(db, false, ct);
         if(a.UserId!=null) { await access.LockAsync(a,ct); await access.CheckQuotaAsync(a,false,ct); }
         var d=await loader.LoadAsync(definitionId,a,ct);
         if(d==null) return Results.NotFound();
@@ -79,6 +80,8 @@ public static class ObjectRecordEndpoints
     private static async Task<IResult> UpdateAsync(long id,SaveObjectRecordRequest request,HttpContext http,
         HandyToolDbContext db,AccessService access,DefinitionLoader loader,TrialIdentity trial,CancellationToken ct)
     {
+        await using var tx=await db.Database.BeginTransactionAsync(ct);
+        await DefinitionUpdateService.LockAsync(db, false, ct);
         var a=await access.ActorAsync(http,ct);var device=a.UserId==null?trial.Get(http):null;
         var r=await access.Records(a,device).SingleOrDefaultAsync(x=>x.Id==id,ct);
         if(r==null)return Results.NotFound();
@@ -94,7 +97,8 @@ public static class ObjectRecordEndpoints
         r.Title=Clean(request.Title);r.Description=Clean(request.Description);r.Values=JsonDocument.Parse(values.GetRawText());
         r.Visibility=request.Visibility;r.Revision=checked(r.Revision+1);r.ModifiedDate=DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return Results.Ok(ObjectRecordResponse.From(r));
+        await tx.CommitAsync(ct);
+        return Results.Ok(ObjectRecordResponse.From(r) with { CanEdit = true });
     }
     private static async Task<IResult> DeleteAsync(long id,HttpContext http,HandyToolDbContext db,AccessService access,TrialIdentity trial,CancellationToken ct,long? revision=null)
     {

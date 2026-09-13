@@ -7,14 +7,14 @@ using handytool_api.Validation;
 namespace handytool_api.Contracts;
 
 public sealed record CreateFieldOptionRequest(string Value, string Label, int DisplayOrder = 0,
-    IReadOnlyDictionary<string,string>? LabelTranslations = null);
+    IReadOnlyDictionary<string,string>? LabelTranslations = null, long? Id = null, bool IsActive = true);
 public sealed record CreateFieldDefinitionRequest(string Key, string Name, FieldType FieldType,
     string? Description = null, bool IsRequired = false, int DisplayOrder = 0, JsonElement? Settings = null,
     IReadOnlyList<CreateFieldOptionRequest>? Options = null,
     IReadOnlyDictionary<string,string>? NameTranslations = null,
     IReadOnlyDictionary<string,string>? DescriptionTranslations = null,
     IReadOnlyDictionary<string,string>? PlaceholderTranslations = null,
-    CreateFieldDefinitionRequest? Item = null);
+    CreateFieldDefinitionRequest? Item = null, long? Id = null, bool IsActive = true);
 public sealed record CreateObjectDefinitionRequest(string Name, string? Description = null,
     IReadOnlyList<CreateFieldDefinitionRequest>? Fields = null,
     IReadOnlyDictionary<string,string>? NameTranslations = null,
@@ -23,6 +23,7 @@ public sealed record CreateObjectDefinitionRequest(string Name, string? Descript
     DefinitionVisibility Visibility = DefinitionVisibility.Private, int RequiredAccessLevel = 0);
 public sealed record UpdateDefinitionRequest(string Name, string? Description, DefinitionVisibility Visibility,
     int RequiredAccessLevel = 0, bool IsActive = true);
+public sealed record EditObjectDefinitionRequest(CreateObjectDefinitionRequest Definition, DateTime ModifiedDate, bool IsActive = true);
 public sealed record SaveObjectRecordRequest
 {
     public string? Title { get; init; }
@@ -68,18 +69,22 @@ public sealed record FieldDefinitionResponse(long Id, string Key, string Name, s
             Fields: depth < 8 && f.ObjectField?.ReferencedObjectDefinition is { } obj
                 ? obj.Fields.OrderBy(x=>x.DisplayOrder).ThenBy(x=>x.Id).Select(x=>From(x,language,depth+1)).ToList() : null);
     }
-    public static FieldDefinitionResponse ForEditing(FieldDefinition f,string language) => From(f,language) with {
+    public static FieldDefinitionResponse ForEditing(FieldDefinition f,string language, bool canonical = false) => From(f,language) with {
+        Name = canonical ? f.Name : From(f, language).Name,
+        Description = canonical ? f.Description : From(f, language).Description,
+        Settings = canonical ? FieldConfiguration.Settings(f) : From(f, language).Settings,
+        Item = f.CollectionField?.ItemDefinition is { } item ? ForEditing(item, language, canonical) : null,
         NameTranslations = f.Translations.Where(t=>t.Name!=null).ToDictionary(t=>t.LanguageCode,t=>t.Name!),
         DescriptionTranslations = f.Translations.Where(t=>t.Description!=null).ToDictionary(t=>t.LanguageCode,t=>t.Description!),
         PlaceholderTranslations = f.Translations.Where(t=>t.Placeholder!=null).ToDictionary(t=>t.LanguageCode,t=>t.Placeholder!),
-        Options = f.Options.OrderBy(o=>o.DisplayOrder).Select(o=>FieldOptionResponse.ForEditing(o,language)).ToList()
+        Options = f.Options.OrderBy(o=>o.DisplayOrder).Select(o=>FieldOptionResponse.ForEditing(o,language) with { Label = canonical ? o.Label : FieldOptionResponse.From(o, language).Label }).ToList()
     };
 }
 public sealed record ObjectDefinitionResponse(long Id, long CreatedByUserId, string Name, string Description, bool IsActive,
     DateTime CreatedDate, DateTime ModifiedDate, long? CompanyId, DefinitionVisibility Visibility, int RequiredAccessLevel,
     long MasterCategoryId, long? SubcategoryId, IReadOnlyList<FieldDefinitionResponse>? Fields = null,
     IReadOnlyDictionary<string,string>? NameTranslations = null,
-    IReadOnlyDictionary<string,string>? DescriptionTranslations = null)
+    IReadOnlyDictionary<string,string>? DescriptionTranslations = null, bool CanEdit = false)
 {
     public static ObjectDefinitionResponse Summary(ObjectDefinition d,string language)
     {
@@ -91,13 +96,18 @@ public sealed record ObjectDefinitionResponse(long Id, long CreatedByUserId, str
         Fields=d.Fields.OrderBy(f=>f.DisplayOrder).ThenBy(f=>f.Id).Select(f=>FieldDefinitionResponse.From(f,language)).ToList()
     };
     public static ObjectDefinitionResponse ForEditing(ObjectDefinition d,string language) => Summary(d,language) with {
+        CanEdit = true,
         Fields=d.Fields.OrderBy(f=>f.DisplayOrder).ThenBy(f=>f.Id).Select(f=>FieldDefinitionResponse.ForEditing(f,language)).ToList(),
         NameTranslations=d.Translations.Where(t=>t.Name!=null).ToDictionary(t=>t.LanguageCode,t=>t.Name!),
         DescriptionTranslations=d.Translations.Where(t=>t.Description!=null).ToDictionary(t=>t.LanguageCode,t=>t.Description!)
     };
+    public static ObjectDefinitionResponse Editor(ObjectDefinition d, string language) => ForEditing(d, language) with {
+        Name = d.Name, Description = d.Description,
+        Fields = d.Fields.OrderBy(f => f.DisplayOrder).ThenBy(f => f.Id).Select(f => FieldDefinitionResponse.ForEditing(f, language, true)).ToList()
+    };
 }
 public sealed record ObjectRecordResponse(long Id,long ObjectDefinitionId,long? CreatedByUserId,string? Title,string? Description,
-    JsonElement Values,DateTime CreatedDate,DateTime ModifiedDate,long? CompanyId,long Revision,RecordVisibility Visibility)
+    JsonElement Values,DateTime CreatedDate,DateTime ModifiedDate,long? CompanyId,long Revision,RecordVisibility Visibility, bool CanEdit = false)
 {
     public static ObjectRecordResponse From(ObjectRecord r) => new(r.Id,r.ObjectDefinitionId,r.CreatedByUserId,r.Title,r.Description,
         r.Values.RootElement.Clone(),r.CreatedDate,r.ModifiedDate,r.CompanyId,r.Revision,r.Visibility);
